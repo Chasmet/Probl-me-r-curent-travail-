@@ -1,0 +1,16 @@
+{
+  "name": "les-faits-sync30-server",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "api": "node api-server.mjs",
+    "mcp": "node mcp-server.mjs",
+    "test": "node --test api.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.0",
+    "zod": "^3.25.0"
+  }
+}
