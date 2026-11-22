@@ -16,10 +16,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Android 36
-        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - name: Android SDK 36
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
       - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -38,3 +41,17 @@ jobs:
           name: les-faits-release-aab-unsigned
           path: app/build/outputs/bundle/release/*.aab
           if-no-files-found: warn
+  server-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validation syntaxe et API
+        run: |
+          node --check server/api-server.mjs
+          node --check server/mcp-server.mjs
+          node --test server/api.test.mjs
