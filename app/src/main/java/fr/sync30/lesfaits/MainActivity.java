@@ -452,7 +452,7 @@ public class MainActivity extends Activity {
         info.addView(text("Accès ChatGPT (MCP)",17,BLUE,true));gap(info,7);
         info.addView(text("Le serveur MCP se configure séparément avec une authentification sécurisée. L'application n'est pas automatiquement connectée à ChatGPT.",13,INK,false));
         gap(info,12);
-        info.addView(text("LES FAITS  •  SYNC 30  •  v0.1.0",12,MUTED,true));
+        info.addView(text("LES FAITS  •  SYNC 30  •  v0.1.1",12,MUTED,true));
         info.addView(text("Application gratuite, sans publicité. Tes signalements locaux sont supprimés si tu désinstalles l'application.",12,MUTED,false));
     }
     private String copyPhoto(Uri uri)throws Exception {

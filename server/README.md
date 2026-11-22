@@ -33,3 +33,5 @@ Le MCP tourne sur **127.0.0.1:8788/mcp**. Outils en lecture seule : `lister_les_
 
 ### Limites actuelles
 Cette passerelle mono-propriétaire n'offre ni gestion multi-utilisateur, ni OAuth intégré, ni conflits bidirectionnels, ni sauvegardes gérées, ni chiffrement du fichier de données au repos. Prévoir ces composants avant une mise à disposition publique multi-utilisateurs.
+
+Compatibilité Android v0.1.1 : l'API accepte aussi `/lesfaits/api/incidents`, utilisé par le serveur CHK Universal Control (fusionné avec tests au vert).

@@ -14,8 +14,8 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/health' && req.method === 'GET') return respond(res, 200, { status: 'ok', app: 'LES FAITS SYNC 30' });
   if (!req.url.startsWith('/api/')) return respond(res, 404, { error: 'Introuvable' });
   if (!verifyToken(req.headers.authorization)) return respond(res, 401, { error: 'Non autorisé' });
-  if (req.url === '/api/incidents' && req.method === 'GET') return respond(res, 200, { incidents: allIncidents() });
-  if (req.url !== '/api/incidents' || req.method !== 'POST') return respond(res, 405, { error: 'Méthode non autorisée' });
+  if ((req.url === '/api/incidents' || req.url === '/lesfaits/api/incidents') && req.method === 'GET') return respond(res, 200, { incidents: allIncidents() });
+  if ((req.url !== '/api/incidents' && req.url !== '/lesfaits/api/incidents') || req.method !== 'POST') return respond(res, 405, { error: 'Méthode non autorisée' });
   try {
     const chunks = []; let bytes = 0;
     for await (const chunk of req) {

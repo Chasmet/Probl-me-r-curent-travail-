@@ -41,7 +41,7 @@ final class SyncClient {
                 payload.put("incidents",arr);
                 byte[] body=payload.toString().getBytes(StandardCharsets.UTF_8);
                 if(body.length>5_000_000)throw new Exception("Volume trop important pour une synchronisation.");
-                URL url=new URL(endpoint.replaceAll("/+$","")+"/api/incidents");
+                URL url=new URL(endpoint.replaceAll("/+$","")+"/lesfaits/api/incidents");
                 if(!"https".equalsIgnoreCase(url.getProtocol()))throw new Exception("HTTPS obligatoire.");
                 connection=(HttpsURLConnection)url.openConnection();
                 connection.setConnectTimeout(15000);connection.setReadTimeout(20000);
