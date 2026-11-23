@@ -69,11 +69,14 @@ public class MainActivity extends Activity {
         home();
         acceptOAuthCallback(getIntent());
         UpdateManager.onAppOpen(this);
+        acceptPairInvite(getIntent());
+        if(McpWorkerClient.isEnabled(prefs))McpWorkerClient.check(getApplicationContext(),null);
     }
     @Override protected void onNewIntent(Intent intent){
         super.onNewIntent(intent);
         setIntent(intent);
         acceptOAuthCallback(intent);
+        acceptPairInvite(intent);
     }
     private void acceptOAuthCallback(Intent intent){
         Uri uri=intent==null?null:intent.getData();
@@ -83,6 +86,23 @@ public class MainActivity extends Activity {
                 .setMessage(message).setPositiveButton("OK",null).show();
             settings();
         });
+    }
+    private void acceptPairInvite(Intent intent){
+        Uri uri=intent==null?null:intent.getData();
+        if(uri==null||!"fr.sync30.lesfaits".equals(uri.getScheme())||!"pair".equals(uri.getHost()))return;
+        String invite=uri.getQueryParameter("invite");
+        intent.setData(null);
+        if(invite==null||!invite.matches("chkinvite_[A-Za-z0-9_-]{20,150}")){
+            toast("Invitation MCP invalide ou manquante.");return;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Associer LES FAITS à mon MCP")
+            .setMessage("Ton serveur CHK Universal pourra demander la consultation de tes signalements et observations depuis ChatGPT. Les photos ne sont pas transmises. Tu peux désactiver ce partage à tout moment. Autoriser ?")
+            .setNegativeButton("Annuler",null)
+            .setPositiveButton("Associer",(d,w)->McpWorkerClient.pair(getApplicationContext(),invite,(ok,message)->
+                new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
+                    .setMessage(message).setPositiveButton("OK",(dialog,which)->settings()).show()))
+            .show();
     }
     private int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
     private GradientDrawable shape(int fill,int radius){
@@ -441,50 +461,65 @@ public class MainActivity extends Activity {
     private void settings(){
         base("Connexion et confidentialité","home");
         LinearLayout c=card(body);
-        c.addView(text("Mon serveur MCP",18,BLUE,true));gap(c,8);
-        c.addView(text(OAuthClient.MCP_URL,12,INK,false));
+        c.addView(text("Mon serveur MCP existant",18,BLUE,true));gap(c,8);
+        c.addView(text(McpWorkerClient.MCP_URL,12,INK,false));
         gap(c,10);
-        boolean connected=!prefs.protectedValue("access").isEmpty()||!prefs.protectedValue("refresh").isEmpty();
-        c.addView(text(connected?"Compte autorisé sur cet appareil":"Non connecté",14,connected?GREEN:MUTED,true));
-        c.addView(text("Aucun jeton à copier. La connexion passe par le navigateur sécurisé de ton serveur, avec autorisation du propriétaire.",12,MUTED,false));
-        addButton(c,connected?"Renouveler l'autorisation":"Se connecter à mon MCP",BLUE,()->OAuthClient.begin(this,prefs,(ok,message)->{
-            if(!ok)new AlertDialog.Builder(this).setTitle("Connexion impossible")
-                .setMessage(message).setPositiveButton("OK",null).show();
-        }));
-        if(connected)addButton(c,"Déconnecter cet appareil",NAVY,()->new AlertDialog.Builder(this)
-            .setTitle("Déconnecter ?")
-            .setMessage("Les dossiers enregistrés sur ce téléphone resteront disponibles.")
-            .setNegativeButton("Annuler",null)
-            .setPositiveButton("Déconnecter",(d,w)->{prefs.clearOAuth();settings();}).show());
-        LinearLayout sync=card(body);
-        sync.addView(text("Sauvegarder mes dossiers",18,BLUE,true));gap(sync,6);
-        sync.addView(text("Les signalements sont enregistrés hors ligne. L'envoi au serveur est volontaire et nécessite ton accord.",13,INK,false));
-        addButton(sync,"Synchroniser avec mon serveur",GREEN,()->new AlertDialog.Builder(this)
-            .setTitle("Autoriser l'envoi ?")
-            .setMessage("Les titres, descriptions, lieux, dates et observations seront transmis à ton serveur privé. Les photos ne sont pas envoyées.")
-            .setNegativeButton("Annuler",null)
-            .setPositiveButton("Autoriser et envoyer",(dialog,which)->SyncClient.send(this,store,prefs,(ok,message)->
-                new AlertDialog.Builder(this).setTitle(ok?"Synchronisation terminée":"Synchronisation impossible")
-                    .setMessage(message).setPositiveButton("OK",null).show())).show());
+        boolean connected=McpWorkerClient.connected(prefs);
+        boolean active=McpWorkerClient.isEnabled(prefs);
+        c.addView(text(!connected?"Non associé":active?"Connecté au serveur · partage activé":"Associé · partage désactivé",
+            14,connected&&active?GREEN:MUTED,true));
+        c.addView(text("LES FAITS reprend le système d'association déjà utilisé par les applications CHK. Aucune connexion OAuth ni jeton permanent à recopier. Une invitation temporaire autorise l'appareil une seule fois.",12,MUTED,false));
+        gap(c,8);
+        if(!connected){
+            EditText invite=edit(c,"Invitation MCP temporaire","Coller l'invitation fournie par ChatGPT",false);
+            addButton(c,"Associer LES FAITS au serveur",BLUE,()->{
+                String code=invite.getText().toString().trim();
+                new AlertDialog.Builder(this)
+                    .setTitle("Autoriser la lecture de mes dossiers ?")
+                    .setMessage("Ce serveur pourra consulter les faits et les observations que tu as enregistrés. Les photos restent sur le téléphone. Le partage peut être désactivé.")
+                    .setNegativeButton("Annuler",null)
+                    .setPositiveButton("Autoriser",(d,w)->McpWorkerClient.pair(getApplicationContext(),code,(ok,message)->
+                        new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
+                            .setMessage(message).setPositiveButton("OK",(dialog,which)->settings()).show()))
+                    .show();
+            });
+        }else{
+            CheckBox share=new CheckBox(this);
+            share.setText("Autoriser ChatGPT à consulter mes signalements");
+            share.setTextColor(INK);share.setChecked(active);
+            share.setOnCheckedChangeListener((v,checked)->{
+                McpWorkerClient.setEnabled(this,prefs,checked);
+                toast(checked?"Lecture MCP autorisée":"Lecture MCP désactivée");
+            });
+            c.addView(share);
+            addButton(c,"Vérifier ma connexion MCP",BLUE,()->
+                McpWorkerClient.check(getApplicationContext(),(ok,message)->
+                    new AlertDialog.Builder(this).setTitle(ok?"MCP disponible":"MCP indisponible")
+                        .setMessage(message).setPositiveButton("OK",null).show()));
+            addButton(c,"Dissocier cet appareil",NAVY,()->new AlertDialog.Builder(this)
+                .setTitle("Dissocier LES FAITS ?")
+                .setMessage("Le serveur ne pourra plus interroger l'application depuis cet appareil. Aucun signalement local ne sera effacé.")
+                .setNegativeButton("Annuler",null)
+                .setPositiveButton("Dissocier",(d,w)->{McpWorkerClient.disconnect(this,prefs);settings();}).show());
+        }
         LinearLayout info=card(body);
-        info.addView(text("ChatGPT et confidentialité",17,BLUE,true));gap(info,7);
-        info.addView(text("Le même MCP ChatGPT sert à consulter les faits une fois le serveur actualisé et les données synchronisées. L'adresse seule ne suffit pas : l'autorisation OAuth protège l'accès.",13,INK,false));
-        gap(info,12);
+        info.addView(text("Lecture des dossiers dans ChatGPT",17,BLUE,true));gap(info,7);
+        info.addView(text("Lorsque le partage est actif, LES FAITS répond aux demandes de ton MCP : lister les faits, consulter un dossier et obtenir les statistiques. La vérification se fait à l'ouverture, puis périodiquement en arrière-plan selon les restrictions de batterie Android. Les rapports restent dans le téléphone tant que ChatGPT ne les demande pas.",13,INK,false));
+        gap(info,8);
+        info.addView(text("Aucune nouvelle URL de serveur. Les fichiers PDF et les photos ne sont pas transmis.",12,MUTED,false));
         LinearLayout updateCard=card(body);
         updateCard.addView(text("Mises à jour automatiques",18,BLUE,true));
         gap(updateCard,6);
-        updateCard.addView(text("À l'ouverture de l'application, LES FAITS recherche une nouvelle version officielle sur GitHub, au maximum une fois par jour. Aucune donnée personnelle n'est envoyée lors de cette vérification.",12,INK,false));
-        android.widget.CheckBox automatic=new android.widget.CheckBox(this);
-        automatic.setText("Vérifier automatiquement les mises à jour");
-        automatic.setTextColor(INK);
-        automatic.setChecked(UpdateManager.autoEnabled(this));
+        updateCard.addView(text("LES FAITS vérifie GitHub Releases à l'ouverture, au maximum une fois par jour.",12,INK,false));
+        CheckBox automatic=new CheckBox(this);automatic.setText("Vérifier automatiquement les mises à jour");
+        automatic.setTextColor(INK);automatic.setChecked(UpdateManager.autoEnabled(this));
         automatic.setOnCheckedChangeListener((b,checked)->UpdateManager.setAuto(this,checked));
         updateCard.addView(automatic);
         addButton(updateCard,"Vérifier maintenant",BLUE,()->UpdateManager.check(this,true));
-        updateCard.addView(text("Une mise à jour proposée sera téléchargée après ton accord. Android demandera ensuite la confirmation de l'installation. Les versions Play Store suivront les mises à jour Play.",11,MUTED,false));
-        gap(info,9);
-        info.addView(text("LES FAITS  •  SYNC 30  •  v0.3.0",12,MUTED,true));
-        info.addView(text("Application gratuite, sans publicité. Exporte tes rapports PDF avant une désinstallation.",12,MUTED,false));
+        updateCard.addView(text("Une APK officielle et sa signature sont vérifiées avant de proposer l'installation, avec ton accord Android.",11,MUTED,false));
+        LinearLayout version=card(body);
+        version.addView(text("LES FAITS  •  SYNC 30  •  v0.4.0",12,MUTED,true));
+        version.addView(text("Application gratuite. Sauvegarde tes rapports PDF avant toute désinstallation.",12,MUTED,false));
     }
     private String copyPhoto(Uri uri)throws Exception {
         File dir=new File(getFilesDir(),"photos");

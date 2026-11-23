@@ -48,3 +48,18 @@ Pour synchroniser, l'app utilise le même hôte via `/lesfaits/api/incidents`, s
 Le workflow `.github/workflows/release.yml` prépare un APK officiel signable **avec la même clé à chaque version**, puis crée une GitHub Release comprenant `LES-FAITS-SYNC30.apk`. La signature est récupérée sur CHK Universal Control via OIDC GitHub Actions lorsque la version serveur avec le signer est déployée sur le PC. Si ce service n'est pas disponible, le workflow refuse de publier une APK non signée ou signée avec une clé aléatoire.
 
 **Attention aux anciennes APK de test :** elles ont été signées par les clés temporaires de GitHub Actions. Si tu les as installées, une nouvelle signature officielle ne pourra pas les remplacer directement. Exporte impérativement tes dossiers en PDF avant toute désinstallation. Les versions futures signées avec la clé officielle s'installeront ensuite les unes sur les autres sans effacer les données.
+
+## v0.4.0 — connexion MCP CHK sans erreur OAuth
+
+LES FAITS reprend le protocole **agent Android** existant de CHK Universal Control : `/api/onboard`, `/api/agent/<id>/poll`, `/api/agent/<id>/result`, disponible sur le serveur en version 1.0.4. Ce mode ne dépend pas de `/oauth/register` et évite l'erreur `HTTP 400 invalid_client_metadata`.
+
+### Association (une seule fois)
+
+1. Depuis le connecteur ChatGPT existant CHK Browser Local 3 ou CHK Pirate Serveur 3, générer une invitation avec `app_invite`. Elle expire au bout de 15 minutes et ne sert qu'une fois.
+2. Ouvrir sur le téléphone Android `fr.sync30.lesfaits://pair?invite=<invitation>` (ou coller la valeur de l'invitation dans Réglages → Mon serveur MCP).
+3. Confirmer le partage en lecture seule dans LES FAITS. Le serveur fournit alors un identifiant d'appareil et un secret d'agent conservé par Android Keystore, **sans saisie d'un jeton permanent**.
+4. LES FAITS apparaît dans `apps_list`. Depuis ChatGPT, utiliser `task_submit` avec `app_id` et `lesfaits_list`, `lesfaits_detail` ou `lesfaits_stats`. L'application répond lorsqu'elle reçoit les demandes (immédiatement si elle est ouverte, puis par JobScheduler au mieux toutes les 15 minutes selon Android). Consulter les résultats avec `task_get`.
+
+Les photos et les PDF ne sont pas envoyés, les données restent locales. L'application demande l'accord avant association et peut arrêter le partage dans Réglages. Il n'y a **aucun nouveau serveur MCP**, ni changement d'adresse.
+
+**Attention** : ce protocole répond à des requêtes de consultation ; il ne remplace pas une sauvegarde ou une synchronisation permanente vers la base du serveur. La synchronisation via `/lesfaits/api` demandera toujours le déploiement de cette route si elle est souhaitée ultérieurement. Des limites Android (mode veille, économie de batterie) peuvent ralentir le traitement en arrière-plan.
