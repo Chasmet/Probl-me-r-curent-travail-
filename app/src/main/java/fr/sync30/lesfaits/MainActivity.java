@@ -68,8 +68,8 @@ public class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         home();
         acceptOAuthCallback(getIntent());
-        UpdateManager.onAppOpen(this);
-        UpdateManager.onNotificationTap(this,getIntent());
+        SkillMajAuto.onAppOpen(this);
+        SkillMajAuto.onNotificationTap(this,getIntent());
         acceptPairInvite(getIntent());
         if(McpWorkerClient.isEnabled(prefs))McpWorkerClient.check(getApplicationContext(),null);
     }
@@ -78,7 +78,7 @@ public class MainActivity extends Activity {
         setIntent(intent);
         acceptOAuthCallback(intent);
         acceptPairInvite(intent);
-        UpdateManager.onNotificationTap(this,intent);
+        SkillMajAuto.onNotificationTap(this,intent);
     }
     private void acceptOAuthCallback(Intent intent){
         Uri uri=intent==null?null:intent.getData();
@@ -221,7 +221,7 @@ public class MainActivity extends Activity {
     private void home(){
         base("Tout consigner, dater, prouver.","home");
         actionCard(body,"Nouveau signalement","Décrire un fait et joindre des preuves","＋",BLUE,this::form);
-        actionCard(body,"Mises à jour","Rechercher la dernière version de LES FAITS","⟳",GREEN,()->UpdateManager.check(this,true));
+        actionCard(body,"Mises à jour","Rechercher la dernière version de LES FAITS","⟳",GREEN,()->SkillMajAuto.check(this,true));
         heading(body,"Mes espaces");
         actionCard(body,"TRACE · Personnel / Terrain","Incidents, matériel, organisation, sécurité","⌖",BLUE,()->history("TERRAIN"));
         actionCard(body,"RAPPORT · Affaires personnelles","Dossiers et événements du quotidien","▣",GREEN,()->history("PERSONNEL"));
@@ -522,21 +522,21 @@ public class MainActivity extends Activity {
         gap(info,8);
         info.addView(text("Aucune nouvelle URL de serveur. Les fichiers PDF et les photos ne sont pas transmis.",12,MUTED,false));
         LinearLayout updateCard=card(body);
-        updateCard.addView(text("Mises à jour automatiques",18,BLUE,true));
+        updateCard.addView(text("SkillMajAuto · Mises à jour",18,BLUE,true));
         gap(updateCard,6);
-        updateCard.addView(text("LES FAITS recherche les nouvelles versions à l'ouverture et en arrière-plan, une fois par jour si Android le permet. Une notification te prévient lorsqu'une APK officielle est disponible.",12,INK,false));
+        updateCard.addView(text("SkillMajAuto contrôle automatiquement les GitHub Releases à l'ouverture et environ toutes les 12 heures en arrière-plan. Une notification annonce une nouvelle version. L'APK est téléchargée, vérifiée et installée depuis LES FAITS avec ta confirmation Android.",12,INK,false));
         CheckBox automatic=new CheckBox(this);automatic.setText("Vérifier automatiquement les mises à jour");
-        automatic.setTextColor(INK);automatic.setChecked(UpdateManager.autoEnabled(this));
-        automatic.setOnCheckedChangeListener((b,checked)->UpdateManager.setAuto(this,checked));
+        automatic.setTextColor(INK);automatic.setChecked(SkillMajAuto.autoEnabled(this));
+        automatic.setOnCheckedChangeListener((b,checked)->SkillMajAuto.setAuto(this,checked));
         updateCard.addView(automatic);
         if(android.os.Build.VERSION.SDK_INT>=33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
             addButton(updateCard,"Activer les notifications de mises à jour",NAVY,()->
                 requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},5401));
-        addButton(updateCard,"Vérifier maintenant",BLUE,()->UpdateManager.check(this,true));
+        addButton(updateCard,"SkillMajAuto · Vérifier les mises à jour",BLUE,()->SkillMajAuto.check(this,true));
         updateCard.addView(text("Une APK officielle et sa signature sont vérifiées avant de proposer l'installation, avec ton accord Android.",11,MUTED,false));
         LinearLayout version=card(body);
-        version.addView(text("LES FAITS  •  SYNC 30  •  v0.5.0",12,MUTED,true));
+        version.addView(text("LES FAITS  •  SYNC 30  •  v"+SkillMajAuto.versionName(this),12,MUTED,true));
         version.addView(text("Application gratuite. Sauvegarde tes rapports PDF avant toute désinstallation.",12,MUTED,false));
     }
     private String copyPhoto(Uri uri)throws Exception {

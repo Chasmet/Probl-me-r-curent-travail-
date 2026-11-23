@@ -35,29 +35,33 @@ import java.util.concurrent.Executors;
 import javax.net.ssl.HttpsURLConnection;
 
 /**
- * GitHub Releases updater, intended exclusively for the direct-APK channel.
+ * SkillMajAuto — moteur de mise à jour autonome de LES FAITS, inspiré de XDebt.
+ * Vérifie GitHub Releases automatiquement à l’ouverture et via JobScheduler,
+ * récupère l’APK officiel, contrôle SHA-256, package et certificat puis lance
+ * PackageInstaller avec confirmation Android. Sans accès au serveur Windows.
  * Android requires explicit user approval before installation. Updates are
  * never installed silently, and the on-device signing certificate is checked.
  */
-final class UpdateManager {
-    private static final String TAG="LesFaitsUpdater";
+final class SkillMajAuto {
+    private static final String TAG="LesFaitsSkillMajAuto";
     private static final String API="https://api.github.com/repos/Chasmet/Probl-me-r-curent-travail-/releases/latest";
     private static final String DOWNLOAD_PREFIX="https://github.com/Chasmet/Probl-me-r-curent-travail-/releases/download/";
     private static final ExecutorService pool=Executors.newSingleThreadExecutor();
-    private static final long CHECK_INTERVAL=24L*60*60*1000;
+    private static final long CHECK_INTERVAL=12L*60*60*1000;
     private static final long MAX_APK=150L*1024*1024;
-    private static final String PREFS="lesfaits_updater";
+    private static final String PREFS="lesfaits_skillmajauto";
     private static final int JOB_ID=53030;
     private static final int NOTIFICATION_ID=53031;
-    private static final String CHANNEL_ID="lesfaits_updates";
+    private static final String CHANNEL_ID="lesfaits_skillmajauto";
     private static final String OPEN_ACTION="fr.sync30.lesfaits.UPDATE_OPEN";
     static final class Release {
         final String version,url,digest,notes;
         Release(String v,String u,String d,String n){version=v;url=u;digest=d;notes=n;}
     }
-    private UpdateManager(){}
+    private SkillMajAuto(){}
     static boolean autoEnabled(Context ctx){
-        return ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getBoolean("automatic",true);
+        return ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getBoolean("automatic",
+            ctx.getSharedPreferences("lesfaits_updater",Context.MODE_PRIVATE).getBoolean("automatic",true));
     }
     static void setAuto(Context ctx,boolean enabled){
         ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putBoolean("automatic",enabled).apply();
