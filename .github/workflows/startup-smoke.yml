@@ -13,7 +13,11 @@ permissions:
 jobs:
   startup:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [35, 36]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -31,7 +35,7 @@ jobs:
       - name: Installer et lancer LES FAITS sur Android
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: ${{ matrix.api-level }}
           target: google_apis
           arch: x86_64
           profile: pixel_6
@@ -39,19 +43,11 @@ jobs:
           ram-size: 2048M
           heap-size: 384M
           emulator-boot-timeout: 600
-          script: |
-            set -euo pipefail
-            gradle :app:assembleDebug --stacktrace
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb logcat -c
-            adb shell am force-stop fr.sync30.lesfaits || true
-            adb shell am start -W -n fr.sync30.lesfaits/.MainActivity
-            sleep 8
-            adb logcat -d -v time > /tmp/lesfaits-launch-logcat.txt
-            if grep -A 25 -E 'FATAL EXCEPTION|Process: fr.sync30.lesfaits' /tmp/lesfaits-launch-logcat.txt; then
-              echo 'ÉCHEC : crash Android détecté dans logcat'
-              exit 1
-            fi
-            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|mCurrentFocus|fr.sync30.lesfaits' | head -20
-            adb shell pidof fr.sync30.lesfaits || { echo 'ÉCHEC : processus LES FAITS absent après lancement'; exit 1; }
-            echo 'LES FAITS démarre et reste actif sur émulateur Android.'
+          script: bash .github/scripts/startup-smoke.sh
+      - name: Conserver logcat et capture d'écran
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lesfaits-launch-android-${{ matrix.api-level }}
+          path: startup-artifacts/
+          if-no-files-found: warn
