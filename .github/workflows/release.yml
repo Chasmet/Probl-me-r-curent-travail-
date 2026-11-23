@@ -1,5 +1,11 @@
 name: Publier APK signé — LES FAITS
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/release.yml'
+      - '.github/scripts/release-signer.mjs'
   workflow_dispatch:
     inputs:
       version:
@@ -38,25 +44,35 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Vérifier la version et l'absence de doublon
+      - name: Déterminer la version et éviter les doublons
+        id: version
         shell: bash
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION_INPUT: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          GRADLE_VERSION="$(sed -n "s/.*versionName '\\([^']*\\)'.*/\\1/p" app/build.gradle | head -n1)"
+          VERSION="${VERSION_INPUT:-$GRADLE_VERSION}"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          grep -F "versionName '$VERSION'" app/build.gradle
+          test "$VERSION" = "$GRADLE_VERSION"
+          echo "LF_VERSION=$VERSION" >> "$GITHUB_ENV"
           if gh release view "v$VERSION" >/dev/null 2>&1; then
-            echo "La version v$VERSION existe déjà"; exit 1
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "La version v$VERSION est déjà publiée."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Obtenir la même clé de signature depuis CHK Universal
+        if: steps.version.outputs.skip != 'true'
         env:
           SIGNER_URL: https://chk-universal-1.taild9e4de.ts.net/lesfaits/api/ci/signing
         run: node .github/scripts/release-signer.mjs
       - name: Compiler une APK officielle avec signature stable
+        if: steps.version.outputs.skip != 'true'
         run: gradle :app:assembleRelease --stacktrace
       - name: Vérifier la signature et l'APK
+        if: steps.version.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -65,8 +81,9 @@ jobs:
           test "$(stat -c%s LES-FAITS-SYNC30.apk)" -gt 10000
           sha256sum LES-FAITS-SYNC30.apk
       - name: Publier sur GitHub Releases (source des mises à jour)
+        if: steps.version.outputs.skip != 'true'
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ env.LF_VERSION }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -74,8 +91,9 @@ jobs:
             --title "LES FAITS — SYNC 30 v$VERSION" \
             --notes "Mise à jour officielle Android signée. Depuis l'application : Réglages → Mises à jour automatiques. Les signalements restent sur le téléphone lors d'une mise à jour signée par la même clé."
       - name: Conserver une copie de l'APK publiée
+        if: steps.version.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: les-faits-v${{ inputs.version }}-release-apk
+          name: les-faits-v${{ env.LF_VERSION }}-release-apk
           path: LES-FAITS-SYNC30.apk
           retention-days: 30
