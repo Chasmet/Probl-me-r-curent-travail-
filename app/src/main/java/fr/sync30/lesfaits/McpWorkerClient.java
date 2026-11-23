@@ -108,7 +108,8 @@ final class McpWorkerClient {
             .setPersisted(true)
             .setPeriodic(FIFTEEN_MIN)
             .build();
-        scheduler.schedule(info);
+        try { scheduler.schedule(info); }
+        catch(SecurityException denied){ Log.e(TAG,"Planification MCP refusée par Android.",denied); }
     }
     private static void stopJob(Context context){
         JobScheduler scheduler=(JobScheduler)context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
