@@ -26,7 +26,7 @@ public final class Store extends SQLiteOpenHelper {
         Note(long at, String text) { this.at=at; this.text=text; }
     }
     private final Context ctx;
-    public Store(Context context) { super(context, "lesfaits.db", null, 1); ctx=context.getApplicationContext(); }
+    public Store(Context context) { super(context, "lesfaits.db", null, 2); ctx=context.getApplicationContext(); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, location TEXT NOT NULL, occurred INTEGER NOT NULL, created INTEGER NOT NULL, severity TEXT NOT NULL, recurring INTEGER NOT NULL, status TEXT NOT NULL)");
         db.execSQL("CREATE TABLE photos (id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER NOT NULL, path TEXT NOT NULL)");
@@ -34,8 +34,11 @@ public final class Store extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX idx_incidents_occurred ON incidents(occurred)");
         db.execSQL("CREATE INDEX idx_photos_incident ON photos(incident_id)");
         db.execSQL("CREATE INDEX idx_notes_incident ON notes(incident_id)");
+        db.execSQL("CREATE TABLE mcp_requests (request_id TEXT PRIMARY KEY NOT NULL, incident_id INTEGER NOT NULL)");
     }
-    @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion) {}
+    @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion) {
+        if(oldVersion<2) db.execSQL("CREATE TABLE IF NOT EXISTS mcp_requests (request_id TEXT PRIMARY KEY NOT NULL, incident_id INTEGER NOT NULL)");
+    }
     private ContentValues values(Incident v) {
         ContentValues c=new ContentValues();
         c.put("space",v.space); c.put("category",v.category); c.put("title",v.title);
@@ -44,6 +47,24 @@ public final class Store extends SQLiteOpenHelper {
         c.put("recurring",v.recurring?1:0); c.put("status",v.status); return c;
     }
     public long insert(Incident incident) { return getWritableDatabase().insertOrThrow("incidents",null,values(incident)); }
+    /** Une tâche MCP rejouée ne doit jamais créer de doublon. */
+    public long insertMcp(Incident incident,String requestId) {
+        if(requestId==null||!requestId.matches("[A-Za-z0-9_-]{8,100}"))
+            throw new IllegalArgumentException("Identifiant de tâche MCP invalide");
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        try {
+            try(Cursor c=db.rawQuery("SELECT incident_id FROM mcp_requests WHERE request_id=?",new String[]{requestId})) {
+                if(c.moveToFirst()) {
+                    long id=c.getLong(0);db.setTransactionSuccessful();return id;
+                }
+            }
+            long id=db.insertOrThrow("incidents",null,values(incident));
+            ContentValues v=new ContentValues();v.put("request_id",requestId);v.put("incident_id",id);
+            db.insertOrThrow("mcp_requests",null,v);
+            db.setTransactionSuccessful();return id;
+        } finally {db.endTransaction();}
+    }
     private Incident from(Cursor c) {
         Incident a=new Incident();
         a.id=c.getLong(c.getColumnIndexOrThrow("id"));

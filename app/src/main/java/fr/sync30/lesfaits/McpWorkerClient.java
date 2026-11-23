@@ -43,9 +43,10 @@ final class McpWorkerClient {
     }
     static String appId(SecurePrefs p){return p.value("worker_id");}
     private static final String[][] ACTIONS={
-        {"lesfaits_list","Consulter les signalements de LES FAITS"},
-        {"lesfaits_detail","Lire un dossier et ses observations"},
-        {"lesfaits_stats","Statistiques des problèmes récurrents"}
+        {"lesfaits_list","Consulter les signalements de LES FAITS","true"},
+        {"lesfaits_detail","Lire un dossier et ses observations","true"},
+        {"lesfaits_stats","Statistiques des problèmes récurrents","true"},
+        {"lesfaits_create","Enregistrer un nouveau signalement dans LES FAITS","false"}
     };
     static void pair(Context context,String invite,Listener listener){
         if(invite==null||!invite.matches("chkinvite_[A-Za-z0-9_-]{20,150}")){
@@ -58,7 +59,7 @@ final class McpWorkerClient {
                 body.put("invite",invite);
                 JSONArray capabilities=new JSONArray();
                 for(String[] action:ACTIONS){
-                    JSONObject v=new JSONObject();v.put("name",action[0]);v.put("description",action[1]);v.put("readOnly",true);
+                    JSONObject v=new JSONObject();v.put("name",action[0]);v.put("description",action[1]);v.put("readOnly",Boolean.parseBoolean(action[2]));
                     capabilities.put(v);
                 }
                 body.put("capabilities",capabilities);
@@ -70,8 +71,9 @@ final class McpWorkerClient {
                 prefs.protectedValue("worker_secret",secret);
                 prefs.value("worker_id",id);
                 prefs.value("worker_enabled","true");
+                prefs.value("worker_write_enabled","true");
                 startJob(context,prefs);
-                finish(context,listener,true,"LES FAITS est associé à ton serveur MCP. Autorisation en lecture seule.");
+                finish(context,listener,true,"LES FAITS est associé à ton serveur MCP. Lecture et création de signalements autorisées (écriture soumise à approbation).");
             }catch(Exception e){
                 Log.w(TAG,"Pairing failed: "+e.getClass().getSimpleName());
                 finish(context,listener,false,"Association refusée : "+safeError(e));
@@ -94,6 +96,7 @@ final class McpWorkerClient {
         stopJob(context);
         prefs.value("worker_id","");
         prefs.value("worker_enabled","false");
+        prefs.value("worker_write_enabled","false");
         try{prefs.protectedValue("worker_secret","");}catch(Exception ignored){}
     }
     static void startJob(Context context,SecurePrefs prefs){
@@ -128,7 +131,7 @@ final class McpWorkerClient {
                     return;
                 }
                 String taskId=task.optString("id",""),action=task.optString("action","");
-                JSONObject result=process(context,action,task.optJSONObject("args"));
+                JSONObject result=process(context,action,task.optJSONObject("args"),taskId);
                 JSONObject response=new JSONObject();
                 response.put("task_id",taskId);response.put("result",result);
                 call("POST","/api/agent/"+id+"/result",secret,response);
@@ -139,7 +142,7 @@ final class McpWorkerClient {
             }finally{polling.set(false);}
         });
     }
-    private static JSONObject process(Context context,String action,JSONObject args)throws Exception{
+    private static JSONObject process(Context context,String action,JSONObject args,String taskId)throws Exception{
         Store store=new Store(context);
         try {
             JSONObject response=new JSONObject();response.put("ok",true);
@@ -172,6 +175,31 @@ final class McpWorkerClient {
                     }
                     v.put("observations",notes);v.put("photos_stockees",store.photos(i.id).size());
                     response.put("fait",v);
+                }
+            }else if("lesfaits_create".equals(action)){
+                if(args==null || !"true".equals(new SecurePrefs(context).value("worker_write_enabled"))){
+                    response.put("ok",false);response.put("error","Écriture non autorisée : réassocier LES FAITS depuis Réglages.");
+                }else{
+                    String title=args.optString("titre","").trim();
+                    String description=args.optString("description","").trim();
+                    String location=args.optString("lieu","").trim();
+                    if(title.length()<3||title.length()>180||description.length()<20||description.length()>25000||location.length()>200){
+                        response.put("ok",false);response.put("error","Titre, description ou lieu invalide.");
+                    }else{
+                        Store.Incident incident=new Store.Incident();
+                        incident.title=title;incident.description=description;incident.location=location;
+                        incident.space="PERSONNEL".equals(args.optString("espace"))?"PERSONNEL":"TERRAIN";
+                        String category=args.optString("categorie","Conditions de travail");
+                        incident.category=category.length()>0&&category.length()<=80?category:"Conditions de travail";
+                        String severity=args.optString("importance","Normale");
+                        incident.severity="Critique".equals(severity)?"Critique":"Élevée".equals(severity)?"Élevée":"Normale";
+                        incident.recurring=args.optBoolean("recurrent",false);
+                        long when=args.optLong("date",System.currentTimeMillis());
+                        long now=System.currentTimeMillis();
+                        incident.occurred=when>946684800000L&&when<=now+86400000L?when:now;
+                        long id=store.insertMcp(incident,taskId);
+                        response.put("id",id);response.put("message","Signalement enregistré sur le téléphone.");
+                    }
                 }
             }else if("lesfaits_stats".equals(action)){
                 List<Store.Incident> list=store.all();int recurring=0,pending=0,done=0;

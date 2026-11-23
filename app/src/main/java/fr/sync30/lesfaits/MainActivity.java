@@ -99,7 +99,7 @@ public class MainActivity extends Activity {
         }
         new AlertDialog.Builder(this)
             .setTitle("Associer LES FAITS à mon MCP")
-            .setMessage("Ton serveur CHK Universal pourra demander la consultation de tes signalements et observations depuis ChatGPT. Les photos ne sont pas transmises. Tu peux désactiver ce partage à tout moment. Autoriser ?")
+            .setMessage("Ton serveur CHK Universal pourra consulter les signalements et créer de nouveaux dossiers à ta demande via ChatGPT. Les écritures nécessitent une approbation du serveur. Les photos ne sont pas transmises. Autoriser ?")
             .setNegativeButton("Annuler",null)
             .setPositiveButton("Associer",(d,w)->McpWorkerClient.pair(getApplicationContext(),invite,(ok,message)->
                 new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
@@ -477,8 +477,8 @@ public class MainActivity extends Activity {
             addButton(c,"Associer LES FAITS au serveur",BLUE,()->{
                 String code=invite.getText().toString().trim();
                 new AlertDialog.Builder(this)
-                    .setTitle("Autoriser la lecture de mes dossiers ?")
-                    .setMessage("Ce serveur pourra consulter les faits et les observations que tu as enregistrés. Les photos restent sur le téléphone. Le partage peut être désactivé.")
+                    .setTitle("Autoriser la lecture et la création de dossiers ?")
+                    .setMessage("Ce serveur pourra consulter et ajouter des dossiers depuis ChatGPT avec approbation. Les photos restent sur le téléphone. Le partage peut être désactivé.")
                     .setNegativeButton("Annuler",null)
                     .setPositiveButton("Autoriser",(d,w)->McpWorkerClient.pair(getApplicationContext(),code,(ok,message)->
                         new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
@@ -487,13 +487,25 @@ public class MainActivity extends Activity {
             });
         }else{
             CheckBox share=new CheckBox(this);
-            share.setText("Autoriser ChatGPT à consulter mes signalements");
+            share.setText("Autoriser les demandes ChatGPT (lecture et création après association)");
             share.setTextColor(INK);share.setChecked(active);
             share.setOnCheckedChangeListener((v,checked)->{
                 McpWorkerClient.setEnabled(this,prefs,checked);
-                toast(checked?"Lecture MCP autorisée":"Lecture MCP désactivée");
+                toast(checked?"Connexion MCP autorisée":"Connexion MCP désactivée");
             });
             c.addView(share);
+            if(!"true".equals(prefs.value("worker_write_enabled"))){
+                c.addView(text("Pour enregistrer des faits depuis ChatGPT, crée une nouvelle invitation MCP puis réassocie LES FAITS. Les dossiers existants seront conservés.",12,MUTED,false));
+                EditText renewal=edit(c,"Nouvelle invitation MCP","Coller le code de réassociation",false);
+                addButton(c,"Activer la création de signalements",BLUE,()->new AlertDialog.Builder(this)
+                    .setTitle("Autoriser les enregistrements ChatGPT ?")
+                    .setMessage("La réassociation permet de demander la création de dossiers sur ce téléphone. Les écritures nécessitent l’approbation prévue par le serveur CHK Universal.")
+                    .setNegativeButton("Annuler",null)
+                    .setPositiveButton("Réassocier",(d,w)->McpWorkerClient.pair(getApplicationContext(),renewal.getText().toString().trim(),(ok,message)->
+                        new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
+                            .setMessage(message).setPositiveButton("OK",(dialog,which)->settings()).show()))
+                    .show());
+            }
             addButton(c,"Vérifier ma connexion MCP",BLUE,()->
                 McpWorkerClient.check(getApplicationContext(),(ok,message)->
                     new AlertDialog.Builder(this).setTitle(ok?"MCP disponible":"MCP indisponible")
@@ -505,8 +517,8 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Dissocier",(d,w)->{McpWorkerClient.disconnect(this,prefs);settings();}).show());
         }
         LinearLayout info=card(body);
-        info.addView(text("Lecture des dossiers dans ChatGPT",17,BLUE,true));gap(info,7);
-        info.addView(text("Lorsque le partage est actif, LES FAITS répond aux demandes de ton MCP : lister les faits, consulter un dossier et obtenir les statistiques. La vérification se fait à l'ouverture, puis périodiquement en arrière-plan selon les restrictions de batterie Android. Les rapports restent dans le téléphone tant que ChatGPT ne les demande pas.",13,INK,false));
+        info.addView(text("Consultation et création depuis ChatGPT",17,BLUE,true));gap(info,7);
+        info.addView(text("Lorsque le partage est actif, LES FAITS répond aux demandes de ton MCP : lister les faits, consulter un dossier, enregistrer un nouveau signalement (après association autorisant l’écriture) et obtenir les statistiques. La vérification se fait à l'ouverture, puis périodiquement en arrière-plan selon les restrictions de batterie Android. Les rapports restent dans le téléphone tant que ChatGPT ne les demande pas.",13,INK,false));
         gap(info,8);
         info.addView(text("Aucune nouvelle URL de serveur. Les fichiers PDF et les photos ne sont pas transmis.",12,MUTED,false));
         LinearLayout updateCard=card(body);
