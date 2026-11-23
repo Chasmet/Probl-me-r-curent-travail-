@@ -6,12 +6,13 @@ on:
       - 'app/**'
       - '.github/workflows/release.yml'
       - '.github/scripts/release-signer.mjs'
+      - '.github/scripts/select-release-signer.mjs'
   workflow_dispatch:
     inputs:
       version:
         description: "Version officielle (identique à app/build.gradle, ex. 0.3.0)"
         required: true
-        default: "0.5.0"
+        default: "0.6.0"
 
 permissions:
   contents: write
@@ -63,11 +64,15 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Obtenir la même clé de signature depuis CHK Universal
+      - name: Signature stable sans remplacer le serveur PC
         if: steps.version.outputs.skip != 'true'
         env:
+          LF_SIGNING_P12_BASE64: ${{ secrets.LF_SIGNING_P12_BASE64 }}
+          LF_SIGNING_PASSWORD: ${{ secrets.LF_SIGNING_PASSWORD }}
+          LF_SIGNING_KEY_PASSWORD: ${{ secrets.LF_SIGNING_KEY_PASSWORD }}
+          LF_EXPECTED_CERT_SHA256: ${{ secrets.LF_EXPECTED_CERT_SHA256 }}
           SIGNER_URL: https://chk-universal-1.taild9e4de.ts.net/lesfaits/api/ci/signing
-        run: node .github/scripts/release-signer.mjs
+        run: node .github/scripts/select-release-signer.mjs
       - name: Compiler une APK officielle avec signature stable
         if: steps.version.outputs.skip != 'true'
         run: gradle :app:assembleRelease --stacktrace
