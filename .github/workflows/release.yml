@@ -1,0 +1,81 @@
+name: Publier APK signé — LES FAITS
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version officielle (identique à app/build.gradle, ex. 0.3.0)"
+        required: true
+        default: "0.3.0"
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: les-faits-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+      - name: Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Vérifier la version et l'absence de doublon
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          grep -F "versionName '$VERSION'" app/build.gradle
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "La version v$VERSION existe déjà"; exit 1
+          fi
+      - name: Obtenir la même clé de signature depuis CHK Universal
+        env:
+          SIGNER_URL: https://chk-universal-1.taild9e4de.ts.net/lesfaits/api/ci/signing
+        run: node .github/scripts/release-signer.mjs
+      - name: Compiler une APK officielle avec signature stable
+        run: gradle :app:assembleRelease --stacktrace
+      - name: Vérifier la signature et l'APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp app/build/outputs/apk/release/app-release.apk LES-FAITS-SYNC30.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose LES-FAITS-SYNC30.apk
+          test "$(stat -c%s LES-FAITS-SYNC30.apk)" -gt 10000
+          sha256sum LES-FAITS-SYNC30.apk
+      - name: Publier sur GitHub Releases (source des mises à jour)
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" LES-FAITS-SYNC30.apk \
+            --title "LES FAITS — SYNC 30 v$VERSION" \
+            --notes "Mise à jour officielle Android signée. Depuis l'application : Réglages → Mises à jour automatiques. Les signalements restent sur le téléphone lors d'une mise à jour signée par la même clé."
+      - name: Conserver une copie de l'APK publiée
+        uses: actions/upload-artifact@v4
+        with:
+          name: les-faits-v${{ inputs.version }}-release-apk
+          path: LES-FAITS-SYNC30.apk
+          retention-days: 30
