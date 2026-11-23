@@ -27,3 +27,10 @@ Les rapports générés sont des constats personnels et ne constituent pas une n
 Données enregistrées dans le stockage privé de l'application, sauvegarde Android désactivée. Le jeton de synchronisation est chiffré via Android Keystore. Les permissions photo globales et localisation ne sont pas demandées. Une désinstallation supprime les données locales : **exporter les PDF auparavant**. 
 
 Voir `server/README.md` pour démarrer la passerelle.
+
+## v0.2.0 — connexion MCP sans jeton manuel
+
+Le serveur MCP est préconfiguré : `https://chk-universal-1.taild9e4de.ts.net/mcp`.
+Dans **Réglages**, utiliser **Se connecter à mon MCP**. Le serveur ouvre l'autorisation OAuth PKCE dans le navigateur ; valider l'accès avec le compte propriétaire. Les jetons d'accès sont ensuite protégés dans Android Keystore et renouvelés automatiquement (l'utilisateur n'a rien à copier).
+
+Pour synchroniser, l'app utilise le même hôte via `/lesfaits/api/incidents`, sans modifier le lien MCP de ChatGPT. L'envoi reste volontaire. Le serveur doit être actualisé avec la prise en charge du retour OAuth mobile ; le simple téléchargement de l'APK ne met pas à jour le service PC.

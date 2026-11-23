@@ -67,6 +67,21 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(NAVY);getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         home();
+        acceptOAuthCallback(getIntent());
+    }
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);
+        setIntent(intent);
+        acceptOAuthCallback(intent);
+    }
+    private void acceptOAuthCallback(Intent intent){
+        Uri uri=intent==null?null:intent.getData();
+        if(uri==null||!"fr.sync30.lesfaits".equals(uri.getScheme())||!"oauth".equals(uri.getHost()))return;
+        OAuthClient.complete(this,prefs,uri,(ok,message)->{
+            new AlertDialog.Builder(this).setTitle(ok?"Connexion établie":"Connexion refusée")
+                .setMessage(message).setPositiveButton("OK",null).show();
+            settings();
+        });
     }
     private int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
     private GradientDrawable shape(int fill,int radius){
@@ -422,38 +437,39 @@ public class MainActivity extends Activity {
         catch(Exception e){toast("Aucune application disponible pour enregistrer un PDF.");}
     }
     private void settings(){
-        base("Réglages / Connexion serveur","home");
+        base("Connexion et confidentialité","home");
         LinearLayout c=card(body);
-        c.addView(text("Synchronisation volontaire",18,BLUE,true));gap(c,8);
-        c.addView(text("Par défaut, LES FAITS fonctionne hors connexion et n'envoie aucune donnée.",13,INK,false));
-        EditText url=edit(c,"URL du serveur HTTPS","https://mon-serveur.example",false);
-        url.setText(prefs.url());url.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
-        EditText token=edit(c,"Jeton d'accès (laisser vide pour conserver)","Jeton secret",false);
-        token.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        addButton(c,"Enregistrer les réglages",BLUE,()->{
-            String address=url.getText().toString().trim();
-            if(!address.isEmpty()&&!address.startsWith("https://")){toast("Une adresse HTTPS est obligatoire.");return;}
-            prefs.url(address);
-            try{
-                if(!token.getText().toString().isEmpty())prefs.token(token.getText().toString());
-                token.setText("");toast("Réglages enregistrés.");
-            }catch(Exception e){toast("Impossible de protéger le jeton sur cet appareil.");}
-        });
-        addButton(c,"Synchroniser avec mon serveur",GREEN,()->new AlertDialog.Builder(this)
-            .setTitle("Autoriser l'envoi des données ?")
-            .setMessage("La synchronisation transmettra titres, descriptions, lieux, dates et observations de tes dossiers à ton serveur. Les photos ne seront PAS envoyées.")
+        c.addView(text("Mon serveur MCP",18,BLUE,true));gap(c,8);
+        c.addView(text(OAuthClient.MCP_URL,12,INK,false));
+        gap(c,10);
+        boolean connected=!prefs.protectedValue("access").isEmpty()||!prefs.protectedValue("refresh").isEmpty();
+        c.addView(text(connected?"Compte autorisé sur cet appareil":"Non connecté",14,connected?GREEN:MUTED,true));
+        c.addView(text("Aucun jeton à copier. La connexion passe par le navigateur sécurisé de ton serveur, avec autorisation du propriétaire.",12,MUTED,false));
+        addButton(c,connected?"Renouveler l'autorisation":"Se connecter à mon MCP",BLUE,()->OAuthClient.begin(this,prefs,(ok,message)->{
+            if(!ok)new AlertDialog.Builder(this).setTitle("Connexion impossible")
+                .setMessage(message).setPositiveButton("OK",null).show();
+        }));
+        if(connected)addButton(c,"Déconnecter cet appareil",NAVY,()->new AlertDialog.Builder(this)
+            .setTitle("Déconnecter ?")
+            .setMessage("Les dossiers enregistrés sur ce téléphone resteront disponibles.")
             .setNegativeButton("Annuler",null)
-            .setPositiveButton("Autoriser et envoyer",(dialog,which)->{
-                SyncClient.send(this,store,prefs,(ok,message)->new AlertDialog.Builder(this)
-                    .setTitle(ok?"Synchronisation terminée":"Synchronisation impossible")
-                    .setMessage(message).setPositiveButton("OK",null).show());
-            }).show());
+            .setPositiveButton("Déconnecter",(d,w)->{prefs.clearOAuth();settings();}).show());
+        LinearLayout sync=card(body);
+        sync.addView(text("Sauvegarder mes dossiers",18,BLUE,true));gap(sync,6);
+        sync.addView(text("Les signalements sont enregistrés hors ligne. L'envoi au serveur est volontaire et nécessite ton accord.",13,INK,false));
+        addButton(sync,"Synchroniser avec mon serveur",GREEN,()->new AlertDialog.Builder(this)
+            .setTitle("Autoriser l'envoi ?")
+            .setMessage("Les titres, descriptions, lieux, dates et observations seront transmis à ton serveur privé. Les photos ne sont pas envoyées.")
+            .setNegativeButton("Annuler",null)
+            .setPositiveButton("Autoriser et envoyer",(dialog,which)->SyncClient.send(this,store,prefs,(ok,message)->
+                new AlertDialog.Builder(this).setTitle(ok?"Synchronisation terminée":"Synchronisation impossible")
+                    .setMessage(message).setPositiveButton("OK",null).show())).show());
         LinearLayout info=card(body);
-        info.addView(text("Accès ChatGPT (MCP)",17,BLUE,true));gap(info,7);
-        info.addView(text("Le serveur MCP se configure séparément avec une authentification sécurisée. L'application n'est pas automatiquement connectée à ChatGPT.",13,INK,false));
+        info.addView(text("ChatGPT et confidentialité",17,BLUE,true));gap(info,7);
+        info.addView(text("Le même MCP ChatGPT sert à consulter les faits une fois le serveur actualisé et les données synchronisées. L'adresse seule ne suffit pas : l'autorisation OAuth protège l'accès.",13,INK,false));
         gap(info,12);
-        info.addView(text("LES FAITS  •  SYNC 30  •  v0.1.1",12,MUTED,true));
-        info.addView(text("Application gratuite, sans publicité. Tes signalements locaux sont supprimés si tu désinstalles l'application.",12,MUTED,false));
+        info.addView(text("LES FAITS  •  SYNC 30  •  v0.2.0",12,MUTED,true));
+        info.addView(text("Application gratuite, sans publicité. Exporte tes rapports PDF avant une désinstallation.",12,MUTED,false));
     }
     private String copyPhoto(Uri uri)throws Exception {
         File dir=new File(getFilesDir(),"photos");

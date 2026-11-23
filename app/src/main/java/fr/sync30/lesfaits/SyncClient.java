@@ -12,13 +12,11 @@ import javax.net.ssl.HttpsURLConnection;
 final class SyncClient {
     interface Listener { void result(boolean ok,String message); }
     static void send(Activity a,Store db,SecurePrefs prefs,Listener listener) {
-        String endpoint=prefs.url().trim(),token=prefs.token();
-        if(!endpoint.startsWith("https://") || token.isEmpty()) {
-            listener.result(false,"Configure une URL HTTPS et un jeton dans Réglages.");return;
-        }
         new Thread(()->{
             HttpsURLConnection connection=null;
             try {
+                String token=OAuthClient.validAccessToken(prefs);
+                if(token.isEmpty())throw new Exception("Connecte LES FAITS à ton serveur depuis Réglages.");
                 JSONArray arr=new JSONArray();
                 List<Store.Incident> incidents=db.all();
                 for(Store.Incident i:incidents) {
@@ -41,7 +39,7 @@ final class SyncClient {
                 payload.put("incidents",arr);
                 byte[] body=payload.toString().getBytes(StandardCharsets.UTF_8);
                 if(body.length>5_000_000)throw new Exception("Volume trop important pour une synchronisation.");
-                URL url=new URL(endpoint.replaceAll("/+$","")+"/lesfaits/api/incidents");
+                URL url=new URL(OAuthClient.BASE+"/lesfaits/api/incidents");
                 if(!"https".equalsIgnoreCase(url.getProtocol()))throw new Exception("HTTPS obligatoire.");
                 connection=(HttpsURLConnection)url.openConnection();
                 connection.setConnectTimeout(15000);connection.setReadTimeout(20000);
