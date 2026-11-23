@@ -524,7 +524,7 @@ public class MainActivity extends Activity {
         LinearLayout updateCard=card(body);
         updateCard.addView(text("SkillMajAuto · Mises à jour",18,BLUE,true));
         gap(updateCard,6);
-        updateCard.addView(text("LES FAITS recherche les nouvelles versions à l'ouverture et en arrière-plan, une fois par jour si Android le permet. Une notification te prévient lorsqu'une APK officielle est disponible.",12,INK,false));
+        updateCard.addView(text("SkillMajAuto contrôle automatiquement les GitHub Releases à l'ouverture et environ toutes les 12 heures en arrière-plan. Une notification annonce une nouvelle version. L'APK est téléchargée, vérifiée et installée depuis LES FAITS avec ta confirmation Android.",12,INK,false));
         CheckBox automatic=new CheckBox(this);automatic.setText("Vérifier automatiquement les mises à jour");
         automatic.setTextColor(INK);automatic.setChecked(SkillMajAuto.autoEnabled(this));
         automatic.setOnCheckedChangeListener((b,checked)->SkillMajAuto.setAuto(this,checked));
