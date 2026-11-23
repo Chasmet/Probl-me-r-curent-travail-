@@ -3,6 +3,12 @@ package fr.sync30.lesfaits;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.job.JobInfo;
+import android.app.job.JobScheduler;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.Context;
 import android.content.pm.PackageInfo;
@@ -41,6 +47,10 @@ final class UpdateManager {
     private static final long CHECK_INTERVAL=24L*60*60*1000;
     private static final long MAX_APK=150L*1024*1024;
     private static final String PREFS="lesfaits_updater";
+    private static final int JOB_ID=53030;
+    private static final int NOTIFICATION_ID=53031;
+    private static final String CHANNEL_ID="lesfaits_updates";
+    private static final String OPEN_ACTION="fr.sync30.lesfaits.UPDATE_OPEN";
     static final class Release {
         final String version,url,digest,notes;
         Release(String v,String u,String d,String n){version=v;url=u;digest=d;notes=n;}
@@ -51,13 +61,64 @@ final class UpdateManager {
     }
     static void setAuto(Context ctx,boolean enabled){
         ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putBoolean("automatic",enabled).apply();
+        schedule(ctx);
     }
     static void onAppOpen(Activity activity) {
+        schedule(activity);
         if(!autoEnabled(activity))return;
         long now=System.currentTimeMillis();
         long last=activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("last_check",0);
         if(last>0 && now-last<CHECK_INTERVAL && now>=last)return;
         check(activity,false);
+    }
+    /** Periodic check when Android permits it. Installation is never silent. */
+    static void schedule(Context ctx){
+        JobScheduler jobs=(JobScheduler)ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        if(jobs==null)return;
+        if(!autoEnabled(ctx)){jobs.cancel(JOB_ID);return;}
+        JobInfo job=new JobInfo.Builder(JOB_ID,new ComponentName(ctx,UpdateCheckJob.class))
+            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+            .setPersisted(true)
+            .setPeriodic(CHECK_INTERVAL)
+            .build();
+        jobs.schedule(job);
+    }
+    static void checkBackground(Context ctx,Runnable done){
+        pool.execute(()->{
+            try{
+                if(!autoEnabled(ctx))return;
+                Release release=latest();
+                if(release!=null && compareVersion(release.version,versionName(ctx))>0)notifyUpdate(ctx,release);
+            }catch(Exception e){Log.w(TAG,"Background check failed: "+e.getClass().getSimpleName());}
+            finally{done.run();}
+        });
+    }
+    private static void notifyUpdate(Context ctx,Release release){
+        if(Build.VERSION.SDK_INT>=33 &&
+            ctx.checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=PackageManager.PERMISSION_GRANTED)return;
+        android.content.SharedPreferences prefs=ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+        if(release.version.equals(prefs.getString("notified_version","")))return;
+        NotificationManager nm=(NotificationManager)ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if(nm==null)return;
+        NotificationChannel channel=new NotificationChannel(CHANNEL_ID,"Mises à jour LES FAITS",NotificationManager.IMPORTANCE_DEFAULT);
+        channel.setDescription("Notification des nouvelles versions officielles");
+        nm.createNotificationChannel(channel);
+        Intent open=new Intent(ctx,MainActivity.class).setAction(OPEN_ACTION)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent tap=PendingIntent.getActivity(ctx,NOTIFICATION_ID,open,
+            PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        Notification notice=new Notification.Builder(ctx,CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("Nouvelle version LES FAITS")
+            .setContentText("Version "+release.version+" disponible. Vérifier et installer.")
+            .setContentIntent(tap).setAutoCancel(true).build();
+        nm.notify(NOTIFICATION_ID,notice);
+        prefs.edit().putString("notified_version",release.version).apply();
+    }
+    static void onNotificationTap(Activity activity,Intent intent){
+        if(intent==null || !OPEN_ACTION.equals(intent.getAction()))return;
+        intent.setAction(null);
+        check(activity,true);
     }
     static void check(Activity activity,boolean manual) {
         pool.execute(()->{
@@ -71,7 +132,7 @@ final class UpdateManager {
                     if(newer) promptUpdate(activity,release);
                     else if(manual){
                         new AlertDialog.Builder(activity).setTitle("Mises à jour")
-                            .setMessage(release==null?"Aucune version APK publiée dans GitHub Releases pour le moment.":"Aucune version plus récente n'est disponible.")
+                            .setMessage(release==null?"Aucune APK officielle publiée sur GitHub Releases. La recherche automatique est prête, mais la première version signée doit encore être publiée.":"Aucune version plus récente n'est disponible.")
                             .setPositiveButton("OK",null).show();
                     }
                 });

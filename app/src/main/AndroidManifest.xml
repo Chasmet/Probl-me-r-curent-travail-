@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application android:allowBackup="false" android:fullBackupContent="false"
         android:label="@string/app_name" android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher" android:supportsRtl="true"
@@ -25,6 +26,8 @@
                 <data android:scheme="fr.sync30.lesfaits" android:host="pair"/>
             </intent-filter>
         </activity>
+        <service android:name=".UpdateCheckJob" android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"/>
         <service android:name=".McpPollJob" android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false"/>
         <receiver android:name=".UpdateReceiver" android:exported="false"/>

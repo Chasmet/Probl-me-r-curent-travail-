@@ -63,3 +63,9 @@ LES FAITS reprend le protocole **agent Android** existant de CHK Universal Contr
 Les photos et les PDF ne sont pas envoyés, les données restent locales. L'application demande l'accord avant association et peut arrêter le partage dans Réglages. Il n'y a **aucun nouveau serveur MCP**, ni changement d'adresse.
 
 **Attention** : ce protocole répond à des requêtes de consultation ; il ne remplace pas une sauvegarde ou une synchronisation permanente vers la base du serveur. La synchronisation via `/lesfaits/api` demandera toujours le déploiement de cette route si elle est souhaitée ultérieurement. Des limites Android (mode veille, économie de batterie) peuvent ralentir le traitement en arrière-plan.
+
+## v0.5.0 — notification de mises à jour automatiques
+
+La vérification quotidienne fonctionne à l'ouverture et en arrière-plan grâce à Android JobScheduler (selon le mode veille et le réseau). Si une nouvelle version officielle signée apparaît sur GitHub Releases, LES FAITS avertit l'utilisateur par notification, sans doublon pour une même version. Sur Android 13+, activer les notifications dans les réglages LES FAITS. Cliquer la notification ouvre la vérification de version puis le téléchargement volontaire. L'installation reste soumise à l'accord d'Android et au contrôle SHA-256 / certificat / package / version, sans suppression de données.
+
+**Prérequis non levé au 23/11/2026 :** le serveur Windows CHK Universal en service utilise encore le code 1.0.4, sans endpoint `/lesfaits/api/ci/signing`. Le workflow de signature renvoie HTTP 404. Tant qu'aucune GitHub Release signée avec une clé privée stable n'a été publiée, l'application ne peut pas offrir de véritable mise à jour installable. La mise à niveau du logiciel Windows est distincte de la mise à jour du dépôt GitHub.

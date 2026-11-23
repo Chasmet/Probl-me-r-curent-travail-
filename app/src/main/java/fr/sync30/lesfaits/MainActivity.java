@@ -69,6 +69,7 @@ public class MainActivity extends Activity {
         home();
         acceptOAuthCallback(getIntent());
         UpdateManager.onAppOpen(this);
+        UpdateManager.onNotificationTap(this,getIntent());
         acceptPairInvite(getIntent());
         if(McpWorkerClient.isEnabled(prefs))McpWorkerClient.check(getApplicationContext(),null);
     }
@@ -77,6 +78,7 @@ public class MainActivity extends Activity {
         setIntent(intent);
         acceptOAuthCallback(intent);
         acceptPairInvite(intent);
+        UpdateManager.onNotificationTap(this,intent);
     }
     private void acceptOAuthCallback(Intent intent){
         Uri uri=intent==null?null:intent.getData();
@@ -510,15 +512,19 @@ public class MainActivity extends Activity {
         LinearLayout updateCard=card(body);
         updateCard.addView(text("Mises à jour automatiques",18,BLUE,true));
         gap(updateCard,6);
-        updateCard.addView(text("LES FAITS vérifie GitHub Releases à l'ouverture, au maximum une fois par jour.",12,INK,false));
+        updateCard.addView(text("LES FAITS recherche les nouvelles versions à l'ouverture et en arrière-plan, une fois par jour si Android le permet. Une notification te prévient lorsqu'une APK officielle est disponible.",12,INK,false));
         CheckBox automatic=new CheckBox(this);automatic.setText("Vérifier automatiquement les mises à jour");
         automatic.setTextColor(INK);automatic.setChecked(UpdateManager.autoEnabled(this));
         automatic.setOnCheckedChangeListener((b,checked)->UpdateManager.setAuto(this,checked));
         updateCard.addView(automatic);
+        if(android.os.Build.VERSION.SDK_INT>=33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
+            addButton(updateCard,"Activer les notifications de mises à jour",NAVY,()->
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},5401));
         addButton(updateCard,"Vérifier maintenant",BLUE,()->UpdateManager.check(this,true));
         updateCard.addView(text("Une APK officielle et sa signature sont vérifiées avant de proposer l'installation, avec ton accord Android.",11,MUTED,false));
         LinearLayout version=card(body);
-        version.addView(text("LES FAITS  •  SYNC 30  •  v0.4.0",12,MUTED,true));
+        version.addView(text("LES FAITS  •  SYNC 30  •  v0.5.0",12,MUTED,true));
         version.addView(text("Application gratuite. Sauvegarde tes rapports PDF avant toute désinstallation.",12,MUTED,false));
     }
     private String copyPhoto(Uri uri)throws Exception {
