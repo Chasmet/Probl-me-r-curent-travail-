@@ -87,7 +87,8 @@ final class SkillMajAuto {
             .setPersisted(true)
             .setPeriodic(CHECK_INTERVAL)
             .build();
-        jobs.schedule(job);
+        try { jobs.schedule(job); }
+        catch(SecurityException denied){ Log.e(TAG,"Impossible de programmer SkillMajAuto (permission réseau manquante).",denied); }
     }
     static void checkBackground(Context ctx,Runnable done){
         pool.execute(()->{
