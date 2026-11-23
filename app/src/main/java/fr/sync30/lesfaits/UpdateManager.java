@@ -76,6 +76,8 @@ final class UpdateManager {
         JobScheduler jobs=(JobScheduler)ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if(jobs==null)return;
         if(!autoEnabled(ctx)){jobs.cancel(JOB_ID);return;}
+        // Re-opening the app must not reset the daily interval.
+        if(jobs.getPendingJob(JOB_ID)!=null)return;
         JobInfo job=new JobInfo.Builder(JOB_ID,new ComponentName(ctx,UpdateCheckJob.class))
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setPersisted(true)
