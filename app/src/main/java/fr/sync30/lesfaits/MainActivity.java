@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         home();
         acceptOAuthCallback(getIntent());
+        UpdateManager.onAppOpen(this);
     }
     @Override protected void onNewIntent(Intent intent){
         super.onNewIntent(intent);
@@ -468,7 +469,20 @@ public class MainActivity extends Activity {
         info.addView(text("ChatGPT et confidentialité",17,BLUE,true));gap(info,7);
         info.addView(text("Le même MCP ChatGPT sert à consulter les faits une fois le serveur actualisé et les données synchronisées. L'adresse seule ne suffit pas : l'autorisation OAuth protège l'accès.",13,INK,false));
         gap(info,12);
-        info.addView(text("LES FAITS  •  SYNC 30  •  v0.2.0",12,MUTED,true));
+        LinearLayout updateCard=card(body);
+        updateCard.addView(text("Mises à jour automatiques",18,BLUE,true));
+        gap(updateCard,6);
+        updateCard.addView(text("À l'ouverture de l'application, LES FAITS recherche une nouvelle version officielle sur GitHub, au maximum une fois par jour. Aucune donnée personnelle n'est envoyée lors de cette vérification.",12,INK,false));
+        android.widget.CheckBox automatic=new android.widget.CheckBox(this);
+        automatic.setText("Vérifier automatiquement les mises à jour");
+        automatic.setTextColor(INK);
+        automatic.setChecked(UpdateManager.autoEnabled(this));
+        automatic.setOnCheckedChangeListener((b,checked)->UpdateManager.setAuto(this,checked));
+        updateCard.addView(automatic);
+        addButton(updateCard,"Vérifier maintenant",BLUE,()->UpdateManager.check(this,true));
+        updateCard.addView(text("Une mise à jour proposée sera téléchargée après ton accord. Android demandera ensuite la confirmation de l'installation. Les versions Play Store suivront les mises à jour Play.",11,MUTED,false));
+        gap(info,9);
+        info.addView(text("LES FAITS  •  SYNC 30  •  v0.3.0",12,MUTED,true));
         info.addView(text("Application gratuite, sans publicité. Exporte tes rapports PDF avant une désinstallation.",12,MUTED,false));
     }
     private String copyPhoto(Uri uri)throws Exception {
