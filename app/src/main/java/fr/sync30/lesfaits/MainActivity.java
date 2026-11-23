@@ -199,6 +199,7 @@ public class MainActivity extends Activity {
     private void home(){
         base("Tout consigner, dater, prouver.","home");
         actionCard(body,"Nouveau signalement","Décrire un fait et joindre des preuves","＋",BLUE,this::form);
+        actionCard(body,"Mises à jour","Rechercher la dernière version de LES FAITS","⟳",GREEN,()->UpdateManager.check(this,true));
         heading(body,"Mes espaces");
         actionCard(body,"TRACE · Personnel / Terrain","Incidents, matériel, organisation, sécurité","⌖",BLUE,()->history("TERRAIN"));
         actionCard(body,"RAPPORT · Affaires personnelles","Dossiers et événements du quotidien","▣",GREEN,()->history("PERSONNEL"));
