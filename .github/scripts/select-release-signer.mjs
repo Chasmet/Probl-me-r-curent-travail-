@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 // Prefer the encrypted GitHub Actions secret when provided; keep the
-// existing CHK Universal OIDC signer as a backwards-compatible fallback.
+// isolated Render OIDC signer, as used by CHK Agent Browser.
 const base64=(process.env.LF_SIGNING_P12_BASE64||'').trim();
 const password=process.env.LF_SIGNING_PASSWORD||'';
 const keyPassword=process.env.LF_SIGNING_KEY_PASSWORD||password;
@@ -12,7 +12,7 @@ if(hasBase64!==hasPassword){
   throw Error('Signature GitHub Secrets partiellement configurée : renseigner le PKCS12 et son mot de passe.');
 }
 if(!hasBase64){
-  throw Error('Signature permanente absente : exécuter tools/setup-ota-and-backup.py signature sur le PC propriétaire. Aucune APK temporaire ne sera publiée.');
+  await import('./release-signer.mjs');
 }else{
   if(process.env.GITHUB_REPOSITORY!=='Chasmet/Probl-me-r-curent-travail-'||
       process.env.GITHUB_REF!=='refs/heads/main'){

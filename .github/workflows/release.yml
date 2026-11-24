@@ -65,14 +65,14 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Signature stable sans remplacer le serveur PC
+      - name: Signature permanente via Render OIDC
         if: steps.version.outputs.skip != 'true'
         env:
           LF_SIGNING_P12_BASE64: ${{ secrets.LF_SIGNING_P12_BASE64 }}
           LF_SIGNING_PASSWORD: ${{ secrets.LF_SIGNING_PASSWORD }}
           LF_SIGNING_KEY_PASSWORD: ${{ secrets.LF_SIGNING_KEY_PASSWORD }}
           LF_EXPECTED_CERT_SHA256: ${{ secrets.LF_EXPECTED_CERT_SHA256 }}
-          SIGNER_URL: https://chk-universal-1.taild9e4de.ts.net/lesfaits/api/ci/signing
+          SIGNER_URL: https://modeliseur-trellis-mcp.onrender.com/lesfaits/ci/signing
         run: node .github/scripts/select-release-signer.mjs
       - name: Compiler une APK officielle avec signature stable
         if: steps.version.outputs.skip != 'true'
