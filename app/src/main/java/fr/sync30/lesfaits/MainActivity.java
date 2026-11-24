@@ -77,7 +77,6 @@ public class MainActivity extends Activity {
         home();
         acceptSharedMedia(getIntent());
         acceptOAuthCallback(getIntent());
-        SkillMajAuto.onAppOpen(this);
         SkillMajAuto.onNotificationTap(this,getIntent());
         acceptPairInvite(getIntent());
         if(McpWorkerClient.isEnabled(prefs))McpWorkerClient.check(getApplicationContext(),null);
@@ -85,6 +84,7 @@ public class MainActivity extends Activity {
     /** Poll queued ChatGPT requests when the app returns to foreground, not only every 15 min. */
     @Override protected void onResume(){
         super.onResume();
+        SkillMajAuto.onAppOpen(this);
         if(prefs!=null&&McpWorkerClient.isEnabled(prefs)){
             long elapsed=android.os.SystemClock.elapsedRealtime();
             if(elapsed-lastForegroundPoll>20000){
@@ -810,7 +810,7 @@ public class MainActivity extends Activity {
         LinearLayout updateCard=card(body);
         updateCard.addView(text("SkillMajAuto · Mises à jour",18,BLUE,true));
         gap(updateCard,6);
-        updateCard.addView(text("SkillMajAuto contrôle automatiquement les GitHub Releases à l'ouverture et environ toutes les 12 heures en arrière-plan. Une notification annonce une nouvelle version. L'APK est téléchargée, vérifiée et installée depuis LES FAITS avec ta confirmation Android.",12,INK,false));
+        updateCard.addView(text("SkillMajAuto vérifie les versions stables GitHub à l'ouverture et au retour dans l'application (au plus toutes les 15 minutes), puis environ toutes les 12 heures en arrière-plan. Une notification et une fenêtre dans LES FAITS proposent la mise à jour. Android demande ton accord avant installation.",12,INK,false));
         CheckBox automatic=new CheckBox(this);automatic.setText("Vérifier automatiquement les mises à jour");
         automatic.setTextColor(INK);automatic.setChecked(SkillMajAuto.autoEnabled(this));
         automatic.setOnCheckedChangeListener((b,checked)->SkillMajAuto.setAuto(this,checked));
