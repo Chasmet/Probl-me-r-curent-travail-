@@ -602,6 +602,26 @@ public class MainActivity extends Activity {
                 }catch(Exception ignored){}
             }
         }
+
+        LinearLayout filesCard=card(body);
+        List<Store.Evidence> attached=store.filesForIncident(id);
+        filesCard.addView(text("Pièces jointes · "+attached.size(),17,BLUE,true));
+        filesCard.addView(text("Photos, vidéos, enregistrements, PDF et documents associés à ce dossier.",12,MUTED,false));
+        addButton(filesCard,"＋ Importer une pièce pour ce rapport",BLUE,()->pickEvidence(id));
+        addButton(filesCard,"Associer des fichiers déjà importés",NAVY,()->chooseFilesForReport(id));
+        for(Store.Evidence file:attached){
+            LinearLayout row=card(body);
+            row.addView(text(file.name,15,INK,true));
+            row.addView(text(FileVault.kind(file.mime)+" · "+FileVault.sizeLabel(file.size),12,MUTED,false));
+            addButton(row,"Ouvrir cette pièce",BLUE,()->openEvidence(file));
+            addButton(row,"Détacher de ce rapport",NAVY,()->
+                new AlertDialog.Builder(this).setTitle("Retirer le lien ?")
+                    .setMessage("Le fichier restera dans la bibliothèque et les autres rapports.")
+                    .setNegativeButton("Annuler",null)
+                    .setPositiveButton("Détacher",(d,w)->{
+                        store.unlinkEvidence(id,file.id);detail(id);
+                    }).show());
+        }
         LinearLayout actions=card(body);
         actions.addView(text("Suivi du problème",17,BLUE,true));
         Spinner status=spinner(actions,"État du dossier",STATUSES);
@@ -627,7 +647,7 @@ public class MainActivity extends Activity {
         addButton(body,"Exporter ce dossier en PDF",GREEN,()->exportPdf(Collections.singletonList(item)));
         addButton(body,"Supprimer ce dossier",0xFFB13E42,()->new AlertDialog.Builder(this)
             .setTitle("Supprimer définitivement ?")
-            .setMessage("Le fait, ses photos et ses observations seront effacés du téléphone.")
+            .setMessage("Ce dossier, ses anciennes photos et ses observations seront effacés. Les fichiers de la bibliothèque seront conservés pour les autres rapports.")
             .setNegativeButton("Annuler",null)
             .setPositiveButton("Supprimer",(d,w)->{store.delete(id);history();}).show());
     }
@@ -646,8 +666,9 @@ public class MainActivity extends Activity {
         summary.addView(text("TRACE · Personnel / Terrain : "+terrain,14,INK,false));
         summary.addView(text("RAPPORT · Affaires personnelles : "+personal,14,INK,false));
         summary.addView(text("Problèmes récurrents : "+recurring,14,INK,false));
+        summary.addView(text("Fichiers dans ma bibliothèque : "+store.files().size(),14,INK,false));
         gap(body,10);
-        actionCard(body,"Exporter tous les dossiers en PDF","Rapport daté, suivi, preuves photographiques","▤",BLUE,()->exportPdf(store.all()));
+        actionCard(body,"Exporter tous les dossiers en PDF","Rapport daté et inventaire des pièces (vidéos non intégrées au PDF)","▤",BLUE,()->exportPdf(store.all()));
         body.addView(text("Les rapports PDF sont enregistrés à l'emplacement que tu choisis sur ton téléphone. Aucun envoi automatique.",12,MUTED,false));
     }
     private void exportPdf(List<Store.Incident> list){
@@ -719,7 +740,7 @@ public class MainActivity extends Activity {
         info.addView(text("Consultation et création depuis ChatGPT",17,BLUE,true));gap(info,7);
         info.addView(text("Lorsque le partage est actif, LES FAITS répond aux demandes de ton MCP : lister les faits, consulter un dossier, enregistrer un nouveau signalement (après association autorisant l’écriture) et obtenir les statistiques. La vérification se fait à l'ouverture, puis périodiquement en arrière-plan selon les restrictions de batterie Android. Les rapports restent dans le téléphone tant que ChatGPT ne les demande pas.",13,INK,false));
         gap(info,8);
-        info.addView(text("Aucune nouvelle URL de serveur. Les fichiers PDF et les photos ne sont pas transmis.",12,MUTED,false));
+        info.addView(text("Les médias restent sur le téléphone. ChatGPT peut consulter les noms et identifiants des fichiers puis demander de les associer aux rapports ; les octets des vidéos et photos ne sont pas transmis.",12,MUTED,false));
         LinearLayout updateCard=card(body);
         updateCard.addView(text("SkillMajAuto · Mises à jour",18,BLUE,true));
         gap(updateCard,6);
@@ -766,7 +787,9 @@ public class MainActivity extends Activity {
         super.onActivityResult(request,result,data);
         if(result!=RESULT_OK||data==null)return;
         try {
-            if(request==PICK_PHOTO){
+            if(request==PICK_EVIDENCE){
+                importEvidence(data);
+            }else if(request==PICK_PHOTO){
                 if(data.getClipData()!=null){
                     for(int i=0;i<data.getClipData().getItemCount();i++){
                         newPhotos.add(copyPhoto(data.getClipData().getItemAt(i).getUri()));
