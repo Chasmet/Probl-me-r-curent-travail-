@@ -32,7 +32,7 @@ root=ET.parse("startup-artifacts/lesfaits-startup-ui.xml").getroot()
 nodes=[n for n in root.iter("node") if n.attrib.get("text")=="Fichiers"]
 if not nodes:
     sys.exit("Onglet Fichiers non visible dans la hiérarchie UI")
-nums=list(map(int,re.findall(r"\\d+",nodes[0].attrib.get("bounds",""))))
+nums=list(map(int,re.findall(r"\d+",nodes[0].attrib.get("bounds",""))))
 if len(nums)!=4:sys.exit("Bornes onglet Fichiers invalides")
 print((nums[0]+nums[2])//2,(nums[1]+nums[3])//2)
 PY
