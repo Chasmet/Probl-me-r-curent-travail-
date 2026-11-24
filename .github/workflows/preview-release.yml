@@ -1,0 +1,69 @@
+name: Publier une APK de test dans GitHub Releases
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/preview-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lesfaits-preview
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+      - name: Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Compiler et vérifier l'APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk LES-FAITS-v0.8.0-TEST.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose LES-FAITS-v0.8.0-TEST.apk
+          test "$(stat -c%s LES-FAITS-v0.8.0-TEST.apk)" -gt 20000
+          sha256sum LES-FAITS-v0.8.0-TEST.apk > LES-FAITS-v0.8.0-TEST.sha256
+      - name: Publier dans GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v0.8.0-preview.1"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "La préversion $tag existe déjà ; aucune écriture."
+            exit 0
+          fi
+          gh release create "$tag" LES-FAITS-v0.8.0-TEST.apk LES-FAITS-v0.8.0-TEST.sha256 \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "LES FAITS — SYNC 30 v0.8.0 (préversion de test)" \
+            --notes "PREVERSION TECHNIQUE. Onglet Fichiers, import de vidéos, images, PDF, bibliothèque de preuves et liaison aux rapports. APK de test signée par une clé de développement temporaire ; ne peut pas mettre à jour une autre signature et ne convient pas à SkillMajAuto. Ne désinstallez pas une application contenant des dossiers sans les sauvegarder. La mise à jour automatique stable reste bloquée par l'absence de clé de signature pérenne ; aucune suppression automatique n'est effectuée."
+      - name: Vérifier la publication GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view v0.8.0-preview.1 --json isPrerelease,assets,url
+          gh release download v0.8.0-preview.1 --pattern 'LES-FAITS-v0.8.0-TEST.sha256' -D /tmp
