@@ -714,12 +714,12 @@ public class MainActivity extends Activity {
                 toast(checked?"Connexion MCP autorisée":"Connexion MCP désactivée");
             });
             c.addView(share);
-            if(!"true".equals(prefs.value("worker_write_enabled"))){
-                c.addView(text("Pour enregistrer des faits depuis ChatGPT, crée une nouvelle invitation MCP puis réassocie LES FAITS. Les dossiers existants seront conservés.",12,MUTED,false));
+            if(!"true".equals(prefs.value("worker_write_enabled"))||!"true".equals(prefs.value("worker_files_enabled"))){
+                c.addView(text("Pour que ChatGPT puisse associer les fichiers aux rapports, crée une invitation MCP et réassocie LES FAITS. Les dossiers et fichiers existants sont conservés.",12,MUTED,false));
                 EditText renewal=edit(c,"Nouvelle invitation MCP","Coller le code de réassociation",false);
-                addButton(c,"Activer la création de signalements",BLUE,()->new AlertDialog.Builder(this)
-                    .setTitle("Autoriser les enregistrements ChatGPT ?")
-                    .setMessage("La réassociation permet de demander la création de dossiers sur ce téléphone. Les écritures nécessitent l’approbation prévue par le serveur CHK Universal.")
+                addButton(c,"Activer la gestion des fichiers ChatGPT",BLUE,()->new AlertDialog.Builder(this)
+                    .setTitle("Autoriser les fichiers et rapports depuis ChatGPT ?")
+                    .setMessage("La réassociation ajoute la consultation des fichiers et leur liaison aux rapports depuis ChatGPT. Les écritures restent soumises aux approbations du serveur CHK Universal.")
                     .setNegativeButton("Annuler",null)
                     .setPositiveButton("Réassocier",(d,w)->McpWorkerClient.pair(getApplicationContext(),renewal.getText().toString().trim(),(ok,message)->
                         new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
@@ -738,7 +738,7 @@ public class MainActivity extends Activity {
         }
         LinearLayout info=card(body);
         info.addView(text("Consultation et création depuis ChatGPT",17,BLUE,true));gap(info,7);
-        info.addView(text("Lorsque le partage est actif, LES FAITS répond aux demandes de ton MCP : lister les faits, consulter un dossier, enregistrer un nouveau signalement (après association autorisant l’écriture) et obtenir les statistiques. La vérification se fait à l'ouverture, puis périodiquement en arrière-plan selon les restrictions de batterie Android. Les rapports restent dans le téléphone tant que ChatGPT ne les demande pas.",13,INK,false));
+        info.addView(text("Lorsque le partage est actif, LES FAITS peut lister les faits, consulter ou créer un signalement et associer une pièce déjà importée à un rapport après réassociation et autorisation. Seules les métadonnées des fichiers sont transmises, jamais les vidéos ou photos elles-mêmes. La vérification a lieu à l’ouverture, puis périodiquement selon Android.",13,INK,false));
         gap(info,8);
         info.addView(text("Les médias restent sur le téléphone. ChatGPT peut consulter les noms et identifiants des fichiers puis demander de les associer aux rapports ; les octets des vidéos et photos ne sont pas transmis.",12,MUTED,false));
         LinearLayout updateCard=card(body);
