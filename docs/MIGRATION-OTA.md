@@ -5,6 +5,9 @@ Ne pas désinstaller l'application actuelle tant que l'archive de sauvegarde n'e
 ## 1. Signature automatique — GitHub uniquement
 Le workflow lit exclusivement les secrets chiffrés GitHub Actions. Aucun serveur de signature externe ni PC requis pour les futures mises à jour. Un administrateur du dépôt doit configurer la clé permanente une seule fois. Ne jamais remplacer une clé déjà utilisée.
 
+### Configuration depuis Android
+Dans Settings > Secrets and variables > Actions, créer le secret `LF_SIGNING_BUNDLE` contenant le JSON privé préparé pour LES FAITS (keystoreBase64, storePassword, keyPassword, certificateSha256, storeType). Ne pas le publier ni le transmettre par messagerie. Ne pas créer ce secret si des secrets LF_SIGNING_* existent déjà. Lancer ensuite le workflow `Publier APK signé — LES FAITS` (Run workflow).
+
 ### Méthode facultative de configuration avec GitHub CLI
 Prérequis : Python 3, JDK (keytool), GitHub CLI (gh), Android SDK Platform Tools (adb).
 Authentifier GitHub CLI avec `gh auth login`. La commande suivante crée une clé permanente localement, la configure comme secrets GitHub Actions et déclenche la publication :

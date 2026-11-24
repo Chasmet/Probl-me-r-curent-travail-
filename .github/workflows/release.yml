@@ -66,6 +66,7 @@ jobs:
       - name: Signature permanente via GitHub Secrets uniquement
         if: steps.version.outputs.skip != 'true'
         env:
+          LF_SIGNING_BUNDLE: ${{ secrets.LF_SIGNING_BUNDLE }}
           LF_SIGNING_P12_BASE64: ${{ secrets.LF_SIGNING_P12_BASE64 }}
           LF_SIGNING_PASSWORD: ${{ secrets.LF_SIGNING_PASSWORD }}
           LF_SIGNING_KEY_PASSWORD: ${{ secrets.LF_SIGNING_KEY_PASSWORD }}

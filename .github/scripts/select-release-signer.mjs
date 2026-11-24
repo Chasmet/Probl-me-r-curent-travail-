@@ -3,6 +3,23 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 // GitHub Actions Secrets only. Never use temporary signing keys or external signers.
+// A single JSON secret simplifies initial setup from Android. Legacy split secrets remain supported.
+const bundleRaw=(process.env.LF_SIGNING_BUNDLE||'').trim();
+if(bundleRaw){
+  if(process.env.LF_SIGNING_P12_BASE64||process.env.LF_SIGNING_PASSWORD||process.env.LF_EXPECTED_CERT_SHA256||process.env.LF_SIGNING_KEY_PASSWORD)throw Error('Deux configurations de signature présentes. Ne pas remplacer une clé existante.');
+  let bundle;
+  try{bundle=JSON.parse(bundleRaw);}catch{throw Error('LF_SIGNING_BUNDLE : JSON invalide.');}
+  if(!bundle||bundle.storeType!=='PKCS12'||!['keystoreBase64','storePassword','keyPassword','certificateSha256'].every(k=>typeof bundle[k]==='string'&&bundle[k].length>0))throw Error('LF_SIGNING_BUNDLE incomplet.');
+  for(const secret of [bundle.keystoreBase64,bundle.storePassword,bundle.keyPassword]){
+    if(/[\r\n]/.test(secret))throw Error('Secret invalide.');
+    process.stdout.write('::add-mask::'+secret+'\n');
+  }
+  process.env.LF_SIGNING_P12_BASE64=bundle.keystoreBase64;
+  process.env.LF_SIGNING_PASSWORD=bundle.storePassword;
+  process.env.LF_SIGNING_KEY_PASSWORD=bundle.keyPassword;
+  process.env.LF_EXPECTED_CERT_SHA256=bundle.certificateSha256;
+}
+
 const base64=(process.env.LF_SIGNING_P12_BASE64||'').trim();
 const password=process.env.LF_SIGNING_PASSWORD||'';
 const keyPassword=process.env.LF_SIGNING_KEY_PASSWORD||password;

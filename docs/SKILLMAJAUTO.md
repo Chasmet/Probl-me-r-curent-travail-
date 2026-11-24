@@ -18,7 +18,7 @@ La suppression d'une application Android efface les données SQLite locales et l
 
 ## Publication des versions futures sans toucher au PC
 
-Le workflow `.github/workflows/release.yml` reconnaît des **secrets GitHub Actions chiffrés** contenant un keystore PKCS12 de signature permanent :
+Le workflow `.github/workflows/release.yml` reconnaît le secret unique `LF_SIGNING_BUNDLE` (JSON privé PKCS12), ou les secrets séparés ci-dessous, mais jamais les deux :
 
 - `LF_SIGNING_P12_BASE64` : base64 du fichier `.p12` privé.
 - `LF_SIGNING_PASSWORD` : mot de passe du magasin.
