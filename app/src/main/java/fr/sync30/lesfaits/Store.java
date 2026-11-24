@@ -31,6 +31,7 @@ public final class Store extends SQLiteOpenHelper {
         public int linkedCount;
     }
     private final Context ctx;
+    Context context(){return ctx;}
     public Store(Context context) { super(context, "lesfaits.db", null, 3); ctx=context.getApplicationContext(); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, location TEXT NOT NULL, occurred INTEGER NOT NULL, created INTEGER NOT NULL, severity TEXT NOT NULL, recurring INTEGER NOT NULL, status TEXT NOT NULL)");
