@@ -52,7 +52,7 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
     private static final int BLUE=0xFF0A57C8, NAVY=0xFF092B62, GREEN=0xFF169D54;
     private static final int BG=0xFFF4F7FC, INK=0xFF173154, MUTED=0xFF63758D;
-    private static final int PICK_PHOTO=101, CAMERA=102, DICTATE=103, SAVE_PDF=104, PICK_EVIDENCE=105;
+    private static final int PICK_PHOTO=101, CAMERA=102, DICTATE=103, SAVE_PDF=104, PICK_EVIDENCE=105, RESTORE_LEGACY=106;
     private static final String[] SPACES={"TRACE — Personnel / Terrain","RAPPORT — Affaires personnelles"};
     private static final String[] CATEGORIES={"Matériel défectueux","Sécurité / Risque","Conditions de travail","Organisation / Service","Accident / Quasi-accident","Situation personnelle","Démarche administrative","Autre"};
     private static final String[] SEVERITIES={"Normale","Élevée","Critique"};
@@ -821,6 +821,13 @@ public class MainActivity extends Activity {
                 requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},5401));
         addButton(updateCard,"SkillMajAuto · Vérifier les mises à jour",BLUE,()->SkillMajAuto.check(this,true));
         updateCard.addView(text("Une APK officielle et sa signature sont vérifiées avant de proposer l'installation, avec ton accord Android.",11,MUTED,false));
+        LinearLayout backup=card(body);
+        backup.addView(text("Restauration de l’ancienne version",18,BLUE,true));
+        backup.addView(text("Importer une sauvegarde locale 0.7.1 (dossiers, observations et photos). Uniquement dans une installation vide, sans écraser de données.",12,INK,false));
+        addButton(backup,"Restaurer une sauvegarde ZIP",BLUE,()->{
+            Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip").addCategory(Intent.CATEGORY_OPENABLE);
+            try{startActivityForResult(pick,RESTORE_LEGACY);}catch(Exception e){toast("Sélecteur de fichiers indisponible.");}
+        });
         LinearLayout version=card(body);
         version.addView(text("LES FAITS  •  SYNC 30  •  v"+SkillMajAuto.versionName(this),12,MUTED,true));
         version.addView(text("Application gratuite. Sauvegarde tes rapports PDF avant toute désinstallation.",12,MUTED,false));
@@ -853,7 +860,23 @@ public class MainActivity extends Activity {
         super.onActivityResult(request,result,data);
         if(result!=RESULT_OK||data==null)return;
         try {
-            if(request==PICK_EVIDENCE){
+            if(request==RESTORE_LEGACY){
+                Uri uri=data.getData();
+                if(uri==null)return;
+                new AlertDialog.Builder(this).setTitle("Restaurer les dossiers")
+                    .setMessage("La sauvegarde restera sur ton téléphone. Aucun dossier existant ne sera écrasé. Continuer ?")
+                    .setNegativeButton("Annuler",null)
+                    .setPositiveButton("Restaurer",(d,w)->{
+                        android.app.ProgressDialog progress=new android.app.ProgressDialog(this);
+                        progress.setMessage("Vérification et restauration locale…");progress.setCancelable(false);progress.show();
+                        fileIo.execute(()->{
+                            try{
+                                int count=LegacyRestore.restore(getApplicationContext(),store,uri);
+                                runOnUiThread(()->{progress.dismiss();toast(count+" dossier(s) restauré(s). Réassocie le serveur MCP si nécessaire.");home();});
+                            }catch(Exception e){runOnUiThread(()->{progress.dismiss();toast("Restauration refusée : "+e.getMessage());});}
+                        });
+                    }).show();
+            }else if(request==PICK_EVIDENCE){
                 importEvidence(data);
             }else if(request==PICK_PHOTO){
                 if(data.getClipData()!=null){

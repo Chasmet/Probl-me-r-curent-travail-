@@ -12,7 +12,7 @@ if(hasBase64!==hasPassword){
   throw Error('Signature GitHub Secrets partiellement configurée : renseigner le PKCS12 et son mot de passe.');
 }
 if(!hasBase64){
-  await import('./release-signer.mjs');
+  throw Error('Signature permanente absente : exécuter tools/setup-ota-and-backup.py signature sur le PC propriétaire. Aucune APK temporaire ne sera publiée.');
 }else{
   if(process.env.GITHUB_REPOSITORY!=='Chasmet/Probl-me-r-curent-travail-'||
       process.env.GITHUB_REF!=='refs/heads/main'){
@@ -36,6 +36,7 @@ if(!hasBase64){
     throw Error('Le keystore doit contenir un seul alias compatible.');
   }
   const expected=(process.env.LF_EXPECTED_CERT_SHA256||'').replace(/[:\s]/g,'').toUpperCase();
+  if(!expected)throw Error('LF_EXPECTED_CERT_SHA256 obligatoire pour verrouiller la clé permanente.');
   if(expected){
     if(!/^[0-9A-F]{64}$/.test(expected))throw Error('Empreinte SHA256 attendue invalide.');
     const found=verify.stdout.match(/SHA256:\s*([0-9A-Fa-f:]{64,95})/i)?.[1]?.replace(/:/g,'').toUpperCase();
