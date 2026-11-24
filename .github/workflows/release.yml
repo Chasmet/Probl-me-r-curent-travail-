@@ -5,7 +5,6 @@ on:
     paths:
       - 'app/**'
       - '.github/workflows/release.yml'
-      - '.github/scripts/release-signer.mjs'
       - '.github/scripts/select-release-signer.mjs'
   workflow_dispatch:
     inputs:
@@ -16,7 +15,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 concurrency:
   group: les-faits-release
@@ -65,14 +63,13 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Signature permanente via Render OIDC
+      - name: Signature permanente via GitHub Secrets uniquement
         if: steps.version.outputs.skip != 'true'
         env:
           LF_SIGNING_P12_BASE64: ${{ secrets.LF_SIGNING_P12_BASE64 }}
           LF_SIGNING_PASSWORD: ${{ secrets.LF_SIGNING_PASSWORD }}
           LF_SIGNING_KEY_PASSWORD: ${{ secrets.LF_SIGNING_KEY_PASSWORD }}
           LF_EXPECTED_CERT_SHA256: ${{ secrets.LF_EXPECTED_CERT_SHA256 }}
-          SIGNER_URL: https://modeliseur-trellis-mcp.onrender.com/lesfaits/ci/signing
         run: node .github/scripts/select-release-signer.mjs
       - name: Compiler une APK officielle avec signature stable
         if: steps.version.outputs.skip != 'true'

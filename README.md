@@ -45,7 +45,7 @@ Pour synchroniser, l'app utilise le même hôte via `/lesfaits/api/incidents`, s
 
 ### Distribution signée et GitHub Releases
 
-Le workflow `.github/workflows/release.yml` prépare un APK officiel signable **avec la même clé à chaque version**, puis crée une GitHub Release comprenant `LES-FAITS-SYNC30.apk`. La signature est récupérée sur CHK Universal Control via OIDC GitHub Actions lorsque la version serveur avec le signer est déployée sur le PC. Si ce service n'est pas disponible, le workflow refuse de publier une APK non signée ou signée avec une clé aléatoire.
+Le workflow `.github/workflows/release.yml` prépare un APK officiel signable **avec la même clé à chaque version**, puis crée une GitHub Release comprenant `LES-FAITS-SYNC30.apk`. La signature provient exclusivement des secrets GitHub Actions. Sans clé permanente configurée, le workflow refuse la publication.
 
 **Attention aux anciennes APK de test :** elles ont été signées par les clés temporaires de GitHub Actions. Si tu les as installées, une nouvelle signature officielle ne pourra pas les remplacer directement. Exporte impérativement tes dossiers en PDF avant toute désinstallation. Les versions futures signées avec la clé officielle s'installeront ensuite les unes sur les autres sans effacer les données.
 
@@ -68,7 +68,7 @@ Les photos et les PDF ne sont pas envoyés, les données restent locales. L'appl
 
 La vérification quotidienne fonctionne à l'ouverture et en arrière-plan grâce à Android JobScheduler (selon le mode veille et le réseau). Si une nouvelle version officielle signée apparaît sur GitHub Releases, LES FAITS avertit l'utilisateur par notification, sans doublon pour une même version. Sur Android 13+, activer les notifications dans les réglages LES FAITS. Cliquer la notification ouvre la vérification de version puis le téléchargement volontaire. L'installation reste soumise à l'accord d'Android et au contrôle SHA-256 / certificat / package / version, sans suppression de données.
 
-**Prérequis non levé au 23/11/2026 :** le serveur Windows CHK Universal en service utilise encore le code 1.0.4, sans endpoint `/lesfaits/api/ci/signing`. Le workflow de signature renvoie HTTP 404. Tant qu'aucune GitHub Release signée avec une clé privée stable n'a été publiée, l'application ne peut pas offrir de véritable mise à jour installable. La mise à niveau du logiciel Windows est distincte de la mise à jour du dépôt GitHub.
+**Prérequis :** enregistrer la clé permanente dans GitHub Actions Secrets. Aucun serveur externe ne participe à la signature.
 
 
 ## v0.6.0 — Enregistrer les faits depuis ChatGPT
@@ -77,12 +77,12 @@ L'action `lesfaits_create` est déclarée avec `readOnly: false` dans le connect
 
 **Important pour les appareils déjà associés :** le serveur CHK Universal mémorise les capacités lors de l'association initiale. Après installation de la nouvelle APK, ouvrir Réglages, générer une nouvelle invitation MCP et utiliser « Activer la création de signalements » pour réassocier l'application et enregistrer la nouvelle capacité. Les écritures restent soumises aux permissions et approbations du serveur ; la consultation demeure possible sur les anciens appareils. Aucun dossier local n'est supprimé.
 
-**Mise à jour automatique :** le mécanisme de vérification et d'installation intégré est conservé. La version 0.6.0 doit être publiée en APK officiel signé avec la même clé de signature pour être installée sans perte de données. Tant que l'endpoint de signature CHK Universal `/lesfaits/api/ci/signing` n'est pas opérationnel, le workflow GitHub refusera la publication ; ne pas désinstaller l'application existante.
+**Mise à jour automatique :** le mécanisme de vérification et d'installation intégré est conservé. La version 0.6.0 doit être publiée en APK officiel signé avec la même clé de signature pour être installée sans perte de données. Tant que les secrets de signature ne sont pas configurés, GitHub refusera la publication ; ne pas désinstaller l'application existante.
 
 
 ## Signature des APK sans changer le serveur PC
 
-Le workflow de publication peut maintenant signer l'APK indépendamment de CHK Universal, avec un keystore PKCS12 **existant** conservé comme secret GitHub Actions. Dans les Secrets du dépôt, enregistrer `LF_SIGNING_P12_BASE64` (fichier PKCS12 existant encodé en base64), `LF_SIGNING_PASSWORD`, éventuellement `LF_SIGNING_KEY_PASSWORD`, et idéalement `LF_EXPECTED_CERT_SHA256` (empreinte SHA-256 du certificat attendu). Le workflow vérifie l'alias et l'empreinte si elle est fournie, puis signe et publie. Si aucun secret de signature n'est configuré, l'ancien signataire OIDC CHK Universal est utilisé ; il échouera si le serveur Windows ne fournit pas sa route dédiée. **La présence des secrets n'est pas connue par l'assistant et leur absence empêche la publication sans serveur compatible.**
+Le workflow de publication peut maintenant signer l'APK indépendamment de CHK Universal, avec un keystore PKCS12 **existant** conservé comme secret GitHub Actions. Dans les Secrets du dépôt, enregistrer `LF_SIGNING_P12_BASE64` (fichier PKCS12 existant encodé en base64), `LF_SIGNING_PASSWORD`, éventuellement `LF_SIGNING_KEY_PASSWORD`, et obligatoirement `LF_EXPECTED_CERT_SHA256` (empreinte SHA-256 du certificat attendu). Le workflow vérifie l'alias et l'empreinte, puis signe et publie. Si aucun secret de signature n'est configuré, la publication est bloquée. Aucun signataire externe n'est utilisé.
 
 **Protection des données** : pour mettre à jour une APK déjà installée sans désinstallation, la clé privée doit correspondre au certificat de signature de cette APK. Une clé nouvelle ou différente ne remplace pas l'ancienne application, même si GitHub publie le fichier : Android refuse la mise à jour. Ne transmettre aucun keystore ni mot de passe dans une conversation, un dépôt ou un ticket public.
 

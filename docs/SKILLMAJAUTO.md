@@ -25,7 +25,7 @@ Le workflow `.github/workflows/release.yml` reconnaît des **secrets GitHub Acti
 - `LF_SIGNING_KEY_PASSWORD` : optionnel si identique au mot de passe du magasin.
 - `LF_EXPECTED_CERT_SHA256` : recommandé, empreinte SHA-256 publique du certificat attendu.
 
-L'APK sera publiée uniquement après une signature vérifiée. Ne jamais publier la clé, son base64 ou son mot de passe dans un dépôt public, un ticket, un chat ou des logs. Le circuit OIDC ancien dépendant du serveur PC reste un repli, pas une obligation avec les secrets correctement configurés.
+L'APK sera publiée uniquement après une signature vérifiée. Ne jamais publier la clé, son base64 ou son mot de passe dans un dépôt public, un ticket, un chat ou des logs. Aucun circuit OIDC ou serveur externe : les secrets GitHub sont obligatoires.
 
 ## Limites techniques
 

@@ -2,8 +2,7 @@ import { writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-// Prefer the encrypted GitHub Actions secret when provided; keep the
-// isolated Render OIDC signer, as used by CHK Agent Browser.
+// GitHub Actions Secrets only. Never use temporary signing keys or external signers.
 const base64=(process.env.LF_SIGNING_P12_BASE64||'').trim();
 const password=process.env.LF_SIGNING_PASSWORD||'';
 const keyPassword=process.env.LF_SIGNING_KEY_PASSWORD||password;
@@ -12,7 +11,7 @@ if(hasBase64!==hasPassword){
   throw Error('Signature GitHub Secrets partiellement configurée : renseigner le PKCS12 et son mot de passe.');
 }
 if(!hasBase64){
-  await import('./release-signer.mjs');
+  throw Error('Clé permanente absente dans GitHub Actions Secrets. Publication bloquée sans serveur externe ni clé temporaire.');
 }else{
   if(process.env.GITHUB_REPOSITORY!=='Chasmet/Probl-me-r-curent-travail-'||
       process.env.GITHUB_REF!=='refs/heads/main'){
@@ -51,5 +50,5 @@ if(!hasBase64){
     'LF_SIGNING_ALIAS='+aliases[0],
     ''
   ].join('\n'));
-  process.stdout.write('Signature APK récupérée depuis GitHub Actions Secrets. Aucun changement du serveur PC requis.\n');
+  process.stdout.write('Signature APK récupérée depuis GitHub Actions Secrets. Aucun service de signature externe.\n');
 }

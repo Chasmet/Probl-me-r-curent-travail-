@@ -57,5 +57,4 @@ jobs:
           node --check server/api-server.mjs
           node --check server/mcp-server.mjs
           node --check .github/scripts/select-release-signer.mjs
-          node --check .github/scripts/release-signer.mjs
           node --test server/api.test.mjs

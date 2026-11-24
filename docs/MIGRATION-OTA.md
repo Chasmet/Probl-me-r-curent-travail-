@@ -2,10 +2,10 @@
 
 Ne pas désinstaller l'application actuelle tant que l'archive de sauvegarde n'est pas vérifiée et l'APK stable disponible.
 
-## 1. Signature automatique — Render OIDC
-La chaîne officielle utilise le même principe que CHK Agent Browser : GitHub Actions obtient une clé dédiée à LES FAITS auprès de Render, par OIDC, sans PC. Le service doit disposer du secret `LESFAITS_SIGNING_JSON`, réservé à ce dépôt. Le navigateur conserve sa propre clé. La méthode locale ci-dessous est uniquement une solution de secours et ne doit jamais remplacer une clé déjà utilisée.
+## 1. Signature automatique — GitHub uniquement
+Le workflow lit exclusivement les secrets chiffrés GitHub Actions. Aucun serveur de signature externe ni PC requis pour les futures mises à jour. Un administrateur du dépôt doit configurer la clé permanente une seule fois. Ne jamais remplacer une clé déjà utilisée.
 
-### Solution locale de secours
+### Méthode facultative de configuration avec GitHub CLI
 Prérequis : Python 3, JDK (keytool), GitHub CLI (gh), Android SDK Platform Tools (adb).
 Authentifier GitHub CLI avec `gh auth login`. La commande suivante crée une clé permanente localement, la configure comme secrets GitHub Actions et déclenche la publication :
 ```
