@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version officielle (identique à app/build.gradle, ex. 0.3.0)"
-        required: true
-        default: "0.8.1"
+        description: "Version officielle (laisser vide pour utiliser app/build.gradle)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
