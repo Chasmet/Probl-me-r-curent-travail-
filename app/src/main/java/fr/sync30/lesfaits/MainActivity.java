@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
     private long formTime=System.currentTimeMillis();
     private long pendingEvidenceIncident=-1L;
     private static final ExecutorService fileIo=Executors.newSingleThreadExecutor();
+    private long lastForegroundPoll=0;
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);store=new Store(this);prefs=new SecurePrefs(this);
@@ -79,6 +80,17 @@ public class MainActivity extends Activity {
         SkillMajAuto.onNotificationTap(this,getIntent());
         acceptPairInvite(getIntent());
         if(McpWorkerClient.isEnabled(prefs))McpWorkerClient.check(getApplicationContext(),null);
+    }
+    /** Poll queued ChatGPT requests when the app returns to foreground, not only every 15 min. */
+    @Override protected void onResume(){
+        super.onResume();
+        if(prefs!=null&&McpWorkerClient.isEnabled(prefs)){
+            long elapsed=android.os.SystemClock.elapsedRealtime();
+            if(elapsed-lastForegroundPoll>20000){
+                lastForegroundPoll=elapsed;
+                McpWorkerClient.check(getApplicationContext(),null);
+            }
+        }
     }
     @Override protected void onNewIntent(Intent intent){
         super.onNewIntent(intent);
@@ -332,6 +344,8 @@ public class MainActivity extends Activity {
         overview.addView(text("Ma bibliothèque de preuves",19,BLUE,true));
         overview.addView(text(all.size()+" fichier(s) privés · photos, vidéos, audio, PDF et documents",12,MUTED,false));
         addButton(overview,"＋ Importer des fichiers",BLUE,()->pickEvidence(-1L));
+        addButton(overview,"Synchroniser les demandes ChatGPT",NAVY,()->
+            McpWorkerClient.check(getApplicationContext(),(ok,message)->toast(message)));
         overview.addView(text("Jusqu'à 250 Mo par fichier. Les originaux sont copiés dans l'espace privé de LES FAITS. Aucun fichier n'est envoyé automatiquement à ChatGPT.",11,MUTED,false));
         EditText search=edit(body,"Rechercher dans mes fichiers","Nom du fichier, type…",false);
         Spinner filter=spinner(body,"Filtrer",new String[]{"Tous","Photos","Vidéos","Audio","Documents"});
