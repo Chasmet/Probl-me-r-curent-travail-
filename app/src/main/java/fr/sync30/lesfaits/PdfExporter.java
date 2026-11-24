@@ -95,7 +95,33 @@ final class PdfExporter {
             line("Suivi / observations :",11,true,0xFF0C3479);
             for(Store.Note n:notes)line(df.format(new Date(n.at))+" : "+n.text,10,false,0xFF333333);
         }
+        List<Store.Evidence> attached=store.filesForIncident(i.id);
+        if(!attached.isEmpty()){
+            line("Inventaire des pièces jointes ("+attached.size()+") :",11,true,0xFF0C3479);
+            for(Store.Evidence file:attached){
+                line("• "+file.name+" ("+FileVault.kind(file.mime)+", "+FileVault.sizeLabel(file.size)+", identifiant "+file.id+")",10,false,Color.DKGRAY);
+            }
+            line("Les vidéos et documents sont conservés dans LES FAITS, non incorporés à ce PDF.",9,false,0xFF65768B);
+        }
         int shown=0;
+        for(Store.Evidence file:attached){
+            if(!file.mime.startsWith("image/")||shown>=2)continue;
+            try{
+                java.io.File safe=FileVault.safeFile(store.context(),file.path);
+                if(!safe.exists())continue;
+                BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=8;
+                Bitmap bitmap=BitmapFactory.decodeFile(safe.getPath(),opts);
+                if(bitmap!=null){
+                    float iw=bitmap.getWidth(),ih=bitmap.getHeight();
+                    float w=Math.min(300f,iw),h=w*ih/iw;
+                    if(h>210f){h=210f;w=h*iw/ih;}
+                    room(h+20f);
+                    canvas.drawBitmap(bitmap,null,new android.graphics.RectF(42,y,42+w,y+h),paint);
+                    y+=h+12;bitmap.recycle();shown++;
+                }
+            }catch(Exception ignored){}
+        }
+        shown=0;
         for(String path:store.photos(i.id)) {
             if(shown++>=2)break;
             try {
