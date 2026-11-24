@@ -25,8 +25,13 @@ public final class Store extends SQLiteOpenHelper {
         public final String text;
         Note(long at, String text) { this.at=at; this.text=text; }
     }
+    public static final class Evidence {
+        public long id, size, created;
+        public String path, name, mime;
+        public int linkedCount;
+    }
     private final Context ctx;
-    public Store(Context context) { super(context, "lesfaits.db", null, 2); ctx=context.getApplicationContext(); }
+    public Store(Context context) { super(context, "lesfaits.db", null, 3); ctx=context.getApplicationContext(); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, location TEXT NOT NULL, occurred INTEGER NOT NULL, created INTEGER NOT NULL, severity TEXT NOT NULL, recurring INTEGER NOT NULL, status TEXT NOT NULL)");
         db.execSQL("CREATE TABLE photos (id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER NOT NULL, path TEXT NOT NULL)");
@@ -35,9 +40,16 @@ public final class Store extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX idx_photos_incident ON photos(incident_id)");
         db.execSQL("CREATE INDEX idx_notes_incident ON notes(incident_id)");
         db.execSQL("CREATE TABLE mcp_requests (request_id TEXT PRIMARY KEY NOT NULL, incident_id INTEGER NOT NULL)");
+        createEvidenceTables(db);
+    }
+    private static void createEvidenceTables(SQLiteDatabase db){
+        db.execSQL("CREATE TABLE IF NOT EXISTS evidence_files (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mime TEXT NOT NULL, path TEXT NOT NULL UNIQUE, size INTEGER NOT NULL, created INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS evidence_links (incident_id INTEGER NOT NULL, file_id INTEGER NOT NULL, PRIMARY KEY (incident_id,file_id))");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_evidence_links_file ON evidence_links(file_id)");
     }
     @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion) {
         if(oldVersion<2) db.execSQL("CREATE TABLE IF NOT EXISTS mcp_requests (request_id TEXT PRIMARY KEY NOT NULL, incident_id INTEGER NOT NULL)");
+        if(oldVersion<3) createEvidenceTables(db);
     }
     private ContentValues values(Incident v) {
         ContentValues c=new ContentValues();
@@ -120,6 +132,72 @@ public final class Store extends SQLiteOpenHelper {
         }
         return a;
     }
+
+    private Evidence fromEvidence(Cursor c) {
+        Evidence f=new Evidence();
+        f.id=c.getLong(c.getColumnIndexOrThrow("id"));
+        f.name=c.getString(c.getColumnIndexOrThrow("name"));
+        f.mime=c.getString(c.getColumnIndexOrThrow("mime"));
+        f.path=c.getString(c.getColumnIndexOrThrow("path"));
+        f.size=c.getLong(c.getColumnIndexOrThrow("size"));
+        f.created=c.getLong(c.getColumnIndexOrThrow("created"));
+        f.linkedCount=c.getInt(c.getColumnIndexOrThrow("linked_count"));
+        return f;
+    }
+    private static final String FILE_COLUMNS="e.id,e.name,e.mime,e.path,e.size,e.created,(SELECT COUNT(*) FROM evidence_links l WHERE l.file_id=e.id) AS linked_count";
+    public long addEvidence(String name,String mime,String path,long size){
+        ContentValues v=new ContentValues();
+        v.put("name",name);v.put("mime",mime);v.put("path",path);
+        v.put("size",size);v.put("created",System.currentTimeMillis());
+        return getWritableDatabase().insertOrThrow("evidence_files",null,v);
+    }
+    public List<Evidence> files(){
+        List<Evidence> list=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT "+FILE_COLUMNS+" FROM evidence_files e ORDER BY e.created DESC,e.id DESC",null)){
+            while(c.moveToNext())list.add(fromEvidence(c));
+        }
+        return list;
+    }
+    public Evidence file(long id){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT "+FILE_COLUMNS+" FROM evidence_files e WHERE e.id=?",new String[]{String.valueOf(id)})){
+            return c.moveToFirst()?fromEvidence(c):null;
+        }
+    }
+    public List<Evidence> filesForIncident(long incidentId){
+        List<Evidence> list=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().rawQuery(
+            "SELECT "+FILE_COLUMNS+" FROM evidence_files e INNER JOIN evidence_links link ON e.id=link.file_id WHERE link.incident_id=? ORDER BY e.created DESC,e.id DESC",
+            new String[]{String.valueOf(incidentId)})){
+            while(c.moveToNext())list.add(fromEvidence(c));
+        }
+        return list;
+    }
+    public boolean linkEvidence(long incidentId,long fileId){
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        try{
+            if(get(incidentId)==null||file(fileId)==null)return false;
+            ContentValues v=new ContentValues();v.put("incident_id",incidentId);v.put("file_id",fileId);
+            db.insertWithOnConflict("evidence_links",null,v,SQLiteDatabase.CONFLICT_IGNORE);
+            db.setTransactionSuccessful();return true;
+        }finally{db.endTransaction();}
+    }
+    public boolean unlinkEvidence(long incidentId,long fileId){
+        return getWritableDatabase().delete("evidence_links","incident_id=? AND file_id=?",
+            new String[]{String.valueOf(incidentId),String.valueOf(fileId)})>0;
+    }
+    /** Supprime le média uniquement s'il ne sert plus à aucun dossier. */
+    public boolean deleteEvidence(long fileId){
+        Evidence f=file(fileId);
+        if(f==null || f.linkedCount!=0)return false;
+        SQLiteDatabase db=getWritableDatabase();
+        int deleted=db.delete("evidence_files","id=? AND NOT EXISTS (SELECT 1 FROM evidence_links WHERE file_id=?)",
+            new String[]{String.valueOf(fileId),String.valueOf(fileId)});
+        if(deleted>0){
+            try{FileVault.safeFile(ctx,f.path).delete();}catch(Exception ignored){}
+        }
+        return deleted>0;
+    }
     public void delete(long id) {
         for(String p:photos(id)) new File(p).delete();
         SQLiteDatabase db=getWritableDatabase();
@@ -128,6 +206,7 @@ public final class Store extends SQLiteOpenHelper {
             String[] a={String.valueOf(id)};
             db.delete("notes","incident_id=?",a);
             db.delete("photos","incident_id=?",a);
+            db.delete("evidence_links","incident_id=?",a);
             db.delete("incidents","id=?",a);
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
