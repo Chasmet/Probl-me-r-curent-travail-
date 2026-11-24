@@ -75,6 +75,7 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(NAVY);getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         home();
+        acceptSharedMedia(getIntent());
         acceptOAuthCallback(getIntent());
         SkillMajAuto.onAppOpen(this);
         SkillMajAuto.onNotificationTap(this,getIntent());
@@ -95,6 +96,7 @@ public class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent){
         super.onNewIntent(intent);
         setIntent(intent);
+        acceptSharedMedia(intent);
         acceptOAuthCallback(intent);
         acceptPairInvite(intent);
         SkillMajAuto.onNotificationTap(this,intent);
@@ -430,6 +432,47 @@ public class MainActivity extends Activity {
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
         refresh.run();
+    }
+
+    /** Android Sharesheet: users can send a media file directly into the local vault. */
+    @SuppressWarnings("deprecation")
+    private void acceptSharedMedia(Intent intent){
+        if(intent==null)return;
+        String action=intent.getAction();
+        if(!Intent.ACTION_SEND.equals(action)&&!Intent.ACTION_SEND_MULTIPLE.equals(action))return;
+        List<Uri> shared=new ArrayList<>();
+        if(intent.getClipData()!=null){
+            for(int i=0;i<Math.min(10,intent.getClipData().getItemCount());i++){
+                Uri uri=intent.getClipData().getItemAt(i).getUri();
+                if(uri!=null)shared.add(uri);
+            }
+        }
+        if(shared.isEmpty()){
+            if(Intent.ACTION_SEND.equals(action)){
+                Uri uri=android.os.Build.VERSION.SDK_INT>=33?
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM,Uri.class):
+                    (Uri)intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                if(uri!=null)shared.add(uri);
+            }else{
+                ArrayList<Uri> list=android.os.Build.VERSION.SDK_INT>=33?
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM,Uri.class):
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                if(list!=null)for(Uri uri:list){
+                    if(uri!=null&&shared.size()<10)shared.add(uri);
+                }
+            }
+        }
+        intent.setAction(null);
+        if(shared.isEmpty())return;
+        Intent selected=new Intent();
+        if(shared.size()==1)selected.setData(shared.get(0));
+        else{
+            ClipData clip=ClipData.newUri(getContentResolver(),"Preuves",shared.get(0));
+            for(int i=1;i<shared.size();i++)clip.addItem(new ClipData.Item(shared.get(i)));
+            selected.setClipData(clip);
+        }
+        pendingEvidenceIncident=-1L;
+        importEvidence(selected);
     }
     private void pickEvidence(long reportId){
         pendingEvidenceIncident=reportId;
