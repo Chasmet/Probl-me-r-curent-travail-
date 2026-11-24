@@ -130,18 +130,21 @@ final class McpWorkerClient {
                 SecurePrefs prefs=new SecurePrefs(context);
                 if(!isEnabled(prefs))throw new Exception("Application non associée ou partage désactivé.");
                 String id=prefs.value("worker_id"),secret=prefs.protectedValue("worker_secret");
-                JSONObject res=call("GET","/api/agent/"+id+"/poll",secret,null);
-                JSONObject task=res.optJSONObject("task");
-                if(task==null){
-                    if(listener!=null)finish(context,listener,true,"Connexion MCP active. Aucune demande ChatGPT en attente.");
-                    return;
+                int processed=0;
+                for(int n=0;n<8;n++){
+                    JSONObject res=call("GET","/api/agent/"+id+"/poll",secret,null);
+                    JSONObject task=res.optJSONObject("task");
+                    if(task==null)break;
+                    String taskId=task.optString("id",""),action=task.optString("action","");
+                    JSONObject result=process(context,action,task.optJSONObject("args"),taskId);
+                    JSONObject response=new JSONObject();
+                    response.put("task_id",taskId);response.put("result",result);
+                    call("POST","/api/agent/"+id+"/result",secret,response);
+                    processed++;
                 }
-                String taskId=task.optString("id",""),action=task.optString("action","");
-                JSONObject result=process(context,action,task.optJSONObject("args"),taskId);
-                JSONObject response=new JSONObject();
-                response.put("task_id",taskId);response.put("result",result);
-                call("POST","/api/agent/"+id+"/result",secret,response);
-                if(listener!=null)finish(context,listener,true,"Demande ChatGPT traitée : "+action);
+                if(listener!=null)finish(context,listener,true,processed==0?
+                    "Connexion MCP active. Aucune demande ChatGPT en attente.":
+                    processed+" demande(s) ChatGPT traitée(s).");
             }catch(Exception e){
                 Log.w(TAG,"Poll failed: "+e.getClass().getSimpleName());
                 if(listener!=null)finish(context,listener,false,"MCP : "+safeError(e));
