@@ -46,7 +46,10 @@ final class McpWorkerClient {
         {"lesfaits_list","Consulter les signalements de LES FAITS","true"},
         {"lesfaits_detail","Lire un dossier et ses observations","true"},
         {"lesfaits_stats","Statistiques des problèmes récurrents","true"},
-        {"lesfaits_create","Enregistrer un nouveau signalement dans LES FAITS","false"}
+        {"lesfaits_create","Enregistrer un nouveau signalement dans LES FAITS","false"},
+        {"lesfaits_files","Lister les fichiers importés et les rapports associés, sans transmettre les médias","true"},
+        {"lesfaits_attach","Associer un fichier existant à un signalement dans LES FAITS","false"},
+        {"lesfaits_detach","Détacher un fichier d'un rapport sans supprimer la preuve","false"}
     };
     static void pair(Context context,String invite,Listener listener){
         if(invite==null||!invite.matches("chkinvite_[A-Za-z0-9_-]{20,150}")){
@@ -72,6 +75,7 @@ final class McpWorkerClient {
                 prefs.value("worker_id",id);
                 prefs.value("worker_enabled","true");
                 prefs.value("worker_write_enabled","true");
+                prefs.value("worker_files_enabled","true");
                 startJob(context,prefs);
                 finish(context,listener,true,"LES FAITS est associé à ton serveur MCP. Lecture et création de signalements autorisées (écriture soumise à approbation).");
             }catch(Exception e){
@@ -97,6 +101,7 @@ final class McpWorkerClient {
         prefs.value("worker_id","");
         prefs.value("worker_enabled","false");
         prefs.value("worker_write_enabled","false");
+        prefs.value("worker_files_enabled","false");
         try{prefs.protectedValue("worker_secret","");}catch(Exception ignored){}
     }
     static void startJob(Context context,SecurePrefs prefs){
@@ -125,18 +130,21 @@ final class McpWorkerClient {
                 SecurePrefs prefs=new SecurePrefs(context);
                 if(!isEnabled(prefs))throw new Exception("Application non associée ou partage désactivé.");
                 String id=prefs.value("worker_id"),secret=prefs.protectedValue("worker_secret");
-                JSONObject res=call("GET","/api/agent/"+id+"/poll",secret,null);
-                JSONObject task=res.optJSONObject("task");
-                if(task==null){
-                    if(listener!=null)finish(context,listener,true,"Connexion MCP active. Aucune demande ChatGPT en attente.");
-                    return;
+                int processed=0;
+                for(int n=0;n<8;n++){
+                    JSONObject res=call("GET","/api/agent/"+id+"/poll",secret,null);
+                    JSONObject task=res.optJSONObject("task");
+                    if(task==null)break;
+                    String taskId=task.optString("id",""),action=task.optString("action","");
+                    JSONObject result=process(context,action,task.optJSONObject("args"),taskId);
+                    JSONObject response=new JSONObject();
+                    response.put("task_id",taskId);response.put("result",result);
+                    call("POST","/api/agent/"+id+"/result",secret,response);
+                    processed++;
                 }
-                String taskId=task.optString("id",""),action=task.optString("action","");
-                JSONObject result=process(context,action,task.optJSONObject("args"),taskId);
-                JSONObject response=new JSONObject();
-                response.put("task_id",taskId);response.put("result",result);
-                call("POST","/api/agent/"+id+"/result",secret,response);
-                if(listener!=null)finish(context,listener,true,"Demande ChatGPT traitée : "+action);
+                if(listener!=null)finish(context,listener,true,processed==0?
+                    "Connexion MCP active. Aucune demande ChatGPT en attente.":
+                    processed+" demande(s) ChatGPT traitée(s).");
             }catch(Exception e){
                 Log.w(TAG,"Poll failed: "+e.getClass().getSimpleName());
                 if(listener!=null)finish(context,listener,false,"MCP : "+safeError(e));
@@ -175,7 +183,47 @@ final class McpWorkerClient {
                         if(notes.length()>=30)break;
                     }
                     v.put("observations",notes);v.put("photos_stockees",store.photos(i.id).size());
+                    JSONArray files=new JSONArray();
+                    for(Store.Evidence file:store.filesForIncident(i.id)){
+                        JSONObject entry=new JSONObject();
+                        entry.put("id",file.id);entry.put("nom",file.name);entry.put("mime",file.mime);
+                        entry.put("taille_octets",file.size);files.put(entry);
+                        if(files.length()>=100)break;
+                    }
+                    v.put("pieces_jointes",files);
                     response.put("fait",v);
+                }
+            }else if("lesfaits_files".equals(action)){
+                int limit=args==null?50:Math.max(1,Math.min(100,args.optInt("limite",50)));
+                long incidentId=args==null?0:args.optLong("rapport_id",0);
+                List<Store.Evidence> files=incidentId>0?store.filesForIncident(incidentId):store.files();
+                response.put("total",files.size());
+                for(Store.Evidence file:files){
+                    if(data.length()>=limit)break;
+                    JSONObject entry=new JSONObject();
+                    entry.put("id",file.id);entry.put("nom",file.name);
+                    entry.put("type",FileVault.kind(file.mime));entry.put("mime",file.mime);
+                    entry.put("taille_octets",file.size);entry.put("rapports_lies",file.linkedCount);
+                    data.put(entry);
+                }
+                response.put("fichiers",data);
+            }else if("lesfaits_attach".equals(action)||"lesfaits_detach".equals(action)){
+                if(args==null||!"true".equals(new SecurePrefs(context).value("worker_files_enabled"))){
+                    response.put("ok",false);
+                    response.put("error","Autorisation de gestion des fichiers absente : réassocier dans LES FAITS.");
+                }else{
+                    long reportId=args.optLong("rapport_id",-1),fileId=args.optLong("fichier_id",-1);
+                    if(reportId<1||fileId<1||store.get(reportId)==null||store.file(fileId)==null){
+                        response.put("ok",false);response.put("error","Fichier ou rapport introuvable.");
+                    }else{
+                        boolean done="lesfaits_attach".equals(action)?
+                            store.linkEvidence(reportId,fileId):store.unlinkEvidence(reportId,fileId);
+                        response.put("ok",done);
+                        response.put("rapport_id",reportId);response.put("fichier_id",fileId);
+                        response.put("message",done?
+                            ("lesfaits_attach".equals(action)?"Fichier lié au rapport.":"Lien retiré, fichier conservé."):
+                            "Association absente ou impossible.");
+                    }
                 }
             }else if("lesfaits_create".equals(action)){
                 if(args==null || !"true".equals(new SecurePrefs(context).value("worker_write_enabled"))){
@@ -211,6 +259,7 @@ final class McpWorkerClient {
                 }
                 response.put("total",list.size());response.put("recurrents",recurring);
                 response.put("actifs",pending);response.put("resolus",done);
+                response.put("fichiers",store.files().size());
             }else {
                 response.put("ok",false);response.put("error","Action non autorisée");
             }

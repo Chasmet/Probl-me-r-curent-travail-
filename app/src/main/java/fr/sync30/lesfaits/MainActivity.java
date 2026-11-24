@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
 import android.content.Intent;
+import android.content.ClipData;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -12,6 +13,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
 import android.text.Editable;
@@ -43,11 +46,13 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int BLUE=0xFF0A57C8, NAVY=0xFF092B62, GREEN=0xFF169D54;
     private static final int BG=0xFFF4F7FC, INK=0xFF173154, MUTED=0xFF63758D;
-    private static final int PICK_PHOTO=101, CAMERA=102, DICTATE=103, SAVE_PDF=104;
+    private static final int PICK_PHOTO=101, CAMERA=102, DICTATE=103, SAVE_PDF=104, PICK_EVIDENCE=105;
     private static final String[] SPACES={"TRACE — Personnel / Terrain","RAPPORT — Affaires personnelles"};
     private static final String[] CATEGORIES={"Matériel défectueux","Sécurité / Risque","Conditions de travail","Organisation / Service","Accident / Quasi-accident","Situation personnelle","Démarche administrative","Autre"};
     private static final String[] SEVERITIES={"Normale","Élevée","Critique"};
@@ -61,21 +66,37 @@ public class MainActivity extends Activity {
     private EditText dictationTarget;
     private List<Store.Incident> pendingPdf;
     private long formTime=System.currentTimeMillis();
+    private long pendingEvidenceIncident=-1L;
+    private static final ExecutorService fileIo=Executors.newSingleThreadExecutor();
+    private long lastForegroundPoll=0;
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);store=new Store(this);prefs=new SecurePrefs(this);
         getWindow().setStatusBarColor(NAVY);getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         home();
+        acceptSharedMedia(getIntent());
         acceptOAuthCallback(getIntent());
         SkillMajAuto.onAppOpen(this);
         SkillMajAuto.onNotificationTap(this,getIntent());
         acceptPairInvite(getIntent());
         if(McpWorkerClient.isEnabled(prefs))McpWorkerClient.check(getApplicationContext(),null);
     }
+    /** Poll queued ChatGPT requests when the app returns to foreground, not only every 15 min. */
+    @Override protected void onResume(){
+        super.onResume();
+        if(prefs!=null&&McpWorkerClient.isEnabled(prefs)){
+            long elapsed=android.os.SystemClock.elapsedRealtime();
+            if(elapsed-lastForegroundPoll>20000){
+                lastForegroundPoll=elapsed;
+                McpWorkerClient.check(getApplicationContext(),null);
+            }
+        }
+    }
     @Override protected void onNewIntent(Intent intent){
         super.onNewIntent(intent);
         setIntent(intent);
+        acceptSharedMedia(intent);
         acceptOAuthCallback(intent);
         acceptPairInvite(intent);
         SkillMajAuto.onNotificationTap(this,intent);
@@ -147,6 +168,13 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);
         p.topMargin=dp(7);p.bottomMargin=dp(5);parent.addView(b,p);
     }
+    private void compactButton(LinearLayout parent,String title,int color,Runnable task){
+        TextView b=button(title,color,task);
+        b.setTextSize(13);
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);
+        p.leftMargin=dp(4);p.rightMargin=dp(4);p.topMargin=dp(6);
+        parent.addView(b,p);
+    }
     private void base(String screen,String selectedTab){
         root=vertical();root.setBackgroundColor(BG);
         root.setOnApplyWindowInsetsListener((view,insets)->{
@@ -178,6 +206,7 @@ public class MainActivity extends Activity {
         nav.setPadding(dp(5),dp(8),dp(5),dp(7));
         navItem(nav,"⌂","Accueil","home".equals(selectedTab),this::home);
         navItem(nav,"▤","Historique","list".equals(selectedTab),()->history());
+        navItem(nav,"▧","Fichiers","vault".equals(selectedTab),this::fileManager);
         navItem(nav,"▣","Rapports","report".equals(selectedTab),this::reports);
         root.addView(nav,new LinearLayout.LayoutParams(-1,dp(65)));
     }
@@ -222,6 +251,7 @@ public class MainActivity extends Activity {
         base("Tout consigner, dater, prouver.","home");
         actionCard(body,"Nouveau signalement","Décrire un fait et joindre des preuves","＋",BLUE,this::form);
         actionCard(body,"Mises à jour","Rechercher la dernière version de LES FAITS","⟳",GREEN,()->SkillMajAuto.check(this,true));
+        actionCard(body,"Mes fichiers et preuves","Photos, vidéos, PDF et documents liés aux dossiers","▧",BLUE,this::fileManager);
         heading(body,"Mes espaces");
         actionCard(body,"TRACE · Personnel / Terrain","Incidents, matériel, organisation, sécurité","⌖",BLUE,()->history("TERRAIN"));
         actionCard(body,"RAPPORT · Affaires personnelles","Dossiers et événements du quotidien","▣",GREEN,()->history("PERSONNEL"));
@@ -250,6 +280,8 @@ public class MainActivity extends Activity {
         gap(c,5);
         int color="Résolu".equals(i.status)?GREEN:("Critique".equals(i.severity)?0xFFD04D21:BLUE);
         c.addView(text(i.status+(i.recurring?"  •  Récurrent":""),12,color,true));
+        int attachments=store.filesForIncident(i.id).size();
+        if(attachments>0)c.addView(text(attachments+" pièce(s) jointe(s)",11,MUTED,false));
         c.setOnClickListener(v->detail(i.id));
     }
     private void history(){history("TOUT");}
@@ -311,6 +343,239 @@ public class MainActivity extends Activity {
         s.setBackground(border(Color.WHITE,12,0xFFD5E0ED));
         parent.addView(s,new LinearLayout.LayoutParams(-1,dp(54)));
         return s;
+    }
+
+    /** Bibliothèque partagée : un fichier importé peut servir à plusieurs signalements. */
+    private void fileManager(){
+        base("Fichiers et pièces justificatives","vault");
+        List<Store.Evidence> all=store.files();
+        LinearLayout overview=card(body);
+        overview.addView(text("Ma bibliothèque de preuves",19,BLUE,true));
+        overview.addView(text(all.size()+" fichier(s) privés · photos, vidéos, audio, PDF et documents",12,MUTED,false));
+        addButton(overview,"＋ Importer des fichiers",BLUE,()->pickEvidence(-1L));
+        addButton(overview,"Synchroniser les demandes ChatGPT",NAVY,()->
+            McpWorkerClient.check(getApplicationContext(),(ok,message)->toast(message)));
+        overview.addView(text("Jusqu'à 250 Mo par fichier. Les originaux sont copiés dans l'espace privé de LES FAITS. Aucun fichier n'est envoyé automatiquement à ChatGPT.",11,MUTED,false));
+        EditText search=edit(body,"Rechercher dans mes fichiers","Nom du fichier, type…",false);
+        Spinner filter=spinner(body,"Filtrer",new String[]{"Tous","Photos","Vidéos","Audio","Documents"});
+        LinearLayout results=vertical();
+        body.addView(results);
+        Runnable refresh=()->{
+            results.removeAllViews();
+            String query=search.getText().toString().trim().toLowerCase(Locale.FRANCE);
+            String type=(String)filter.getSelectedItem();
+            int visible=0;
+            for(Store.Evidence item:store.files()){
+                String kind=FileVault.kind(item.mime);
+                if(!"Tous".equals(type)&&
+                    !("Photos".equals(type)&&"Photo".equals(kind))&&
+                    !("Vidéos".equals(type)&&"Vidéo".equals(kind))&&
+                    !("Audio".equals(type)&&"Audio".equals(kind))&&
+                    !("Documents".equals(type)&&("PDF".equals(kind)||"Document".equals(kind))))continue;
+                if(!item.name.toLowerCase(Locale.FRANCE).contains(query)&&
+                    !kind.toLowerCase(Locale.FRANCE).contains(query))continue;
+                visible++;
+                LinearLayout card=card(results);
+                LinearLayout head=horizontal();head.setGravity(Gravity.CENTER_VERTICAL);
+                if(item.mime.startsWith("image/")){
+                    try{
+                        BitmapFactory.Options o=new BitmapFactory.Options();o.inJustDecodeBounds=true;
+                        BitmapFactory.decodeFile(FileVault.safeFile(this,item.path).getPath(),o);
+                        int max=Math.max(o.outWidth,o.outHeight);
+                        o.inSampleSize=Math.max(1,(max+299)/300);o.inJustDecodeBounds=false;
+                        Bitmap thumbnail=BitmapFactory.decodeFile(item.path,o);
+                        if(thumbnail!=null){
+                            ImageView thumb=new ImageView(this);thumb.setImageBitmap(thumbnail);
+                            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                            head.addView(thumb,new LinearLayout.LayoutParams(dp(66),dp(66)));
+                        }
+                    }catch(Exception ignored){}
+                }else{
+                    String symbol="Vidéo".equals(kind)?"▶":"Audio".equals(kind)?"♫":"PDF".equals(kind)?"PDF":"▧";
+                    TextView icon=text(symbol,"PDF".equals(symbol)?13:23,BLUE,true);icon.setGravity(Gravity.CENTER);
+                    icon.setBackground(shape(0xFFE9F2FF,13));
+                    head.addView(icon,new LinearLayout.LayoutParams(dp(66),dp(66)));
+                }
+                LinearLayout meta=vertical();
+                TextView label=text(item.name,15,INK,true);label.setMaxLines(2);
+                meta.addView(label);
+                meta.addView(text(kind+" · "+FileVault.sizeLabel(item.size),12,MUTED,false));
+                meta.addView(text(item.linkedCount+" rapport(s) lié(s)",11,item.linkedCount>0?GREEN:MUTED,false));
+                LinearLayout.LayoutParams m=new LinearLayout.LayoutParams(0,-2,1);m.leftMargin=dp(12);
+                head.addView(meta,m);card.addView(head);
+                LinearLayout controls=horizontal();
+                compactButton(controls,"Ouvrir",NAVY,()->openEvidence(item));
+                compactButton(controls,"Lier aux rapports",BLUE,()->chooseReportsForFile(item.id));
+                card.addView(controls);
+                if(item.linkedCount==0)addButton(card,"Supprimer de la bibliothèque",0xFF9D4D53,()->
+                    new AlertDialog.Builder(this).setTitle("Supprimer ce fichier ?")
+                        .setMessage("Il sera définitivement supprimé de la mémoire de LES FAITS.")
+                        .setNegativeButton("Annuler",null)
+                        .setPositiveButton("Supprimer",(d,w)->{
+                            if(store.deleteEvidence(item.id)){toast("Fichier supprimé.");fileManager();}
+                            else toast("Fichier utilisé par un rapport : suppression refusée.");
+                        }).show());
+            }
+            if(visible==0){
+                LinearLayout empty=card(results);
+                empty.addView(text("Aucun fichier pour cette recherche.",14,MUTED,false));
+                empty.addView(text("Importe une photo, une vidéo, un PDF ou une pièce justificative.",12,MUTED,false));
+            }
+        };
+        search.addTextChangedListener(new TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            public void onTextChanged(CharSequence s,int start,int before,int count){refresh.run();}
+            public void afterTextChanged(Editable e){}
+        });
+        filter.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){refresh.run();}
+            public void onNothingSelected(android.widget.AdapterView<?> parent){}
+        });
+        refresh.run();
+    }
+
+    /** Android Sharesheet: users can send a media file directly into the local vault. */
+    @SuppressWarnings("deprecation")
+    private void acceptSharedMedia(Intent intent){
+        if(intent==null)return;
+        String action=intent.getAction();
+        if(!Intent.ACTION_SEND.equals(action)&&!Intent.ACTION_SEND_MULTIPLE.equals(action))return;
+        List<Uri> shared=new ArrayList<>();
+        if(intent.getClipData()!=null){
+            for(int i=0;i<Math.min(10,intent.getClipData().getItemCount());i++){
+                Uri uri=intent.getClipData().getItemAt(i).getUri();
+                if(uri!=null)shared.add(uri);
+            }
+        }
+        if(shared.isEmpty()){
+            if(Intent.ACTION_SEND.equals(action)){
+                Uri uri=android.os.Build.VERSION.SDK_INT>=33?
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM,Uri.class):
+                    (Uri)intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                if(uri!=null)shared.add(uri);
+            }else{
+                ArrayList<Uri> list=android.os.Build.VERSION.SDK_INT>=33?
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM,Uri.class):
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                if(list!=null)for(Uri uri:list){
+                    if(uri!=null&&shared.size()<10)shared.add(uri);
+                }
+            }
+        }
+        intent.setAction(null);
+        if(shared.isEmpty())return;
+        Intent selected=new Intent();
+        if(shared.size()==1)selected.setData(shared.get(0));
+        else{
+            ClipData clip=ClipData.newUri(getContentResolver(),"Preuves",shared.get(0));
+            for(int i=1;i<shared.size();i++)clip.addItem(new ClipData.Item(shared.get(i)));
+            selected.setClipData(clip);
+        }
+        pendingEvidenceIncident=-1L;
+        importEvidence(selected);
+    }
+    private void pickEvidence(long reportId){
+        pendingEvidenceIncident=reportId;
+        Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{
+            "image/*","video/*","audio/*","application/pdf","text/plain","text/csv",
+            "application/msword","application/vnd.ms-excel","application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation","application/rtf"
+        });
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try{startActivityForResult(intent,PICK_EVIDENCE);}
+        catch(Exception e){toast("Sélecteur de fichiers indisponible.");}
+    }
+    private void importEvidence(Intent data){
+        final long target=pendingEvidenceIncident;pendingEvidenceIncident=-1L;
+        final List<Uri> choices=new ArrayList<>();
+        if(data.getClipData()!=null){
+            for(int k=0;k<Math.min(10,data.getClipData().getItemCount());k++)
+                choices.add(data.getClipData().getItemAt(k).getUri());
+        }else if(data.getData()!=null)choices.add(data.getData());
+        if(choices.isEmpty()){toast("Aucun fichier sélectionné.");return;}
+        toast("Import en cours ("+choices.size()+" fichier(s))…");
+        fileIo.execute(()->{
+            int added=0;String error=null;
+            try(Store background=new Store(getApplicationContext())){
+                for(Uri uri:choices){
+                    try{
+                        long fileId=FileVault.importUri(getApplicationContext(),background,uri);
+                        if(target>0&&!background.linkEvidence(target,fileId))
+                            throw new IllegalStateException("Rapport n°"+target+" introuvable");
+                        added++;
+                    }catch(Exception ex){error=ex.getMessage();}
+                }
+            }catch(Exception ex){error=ex.getMessage();}
+            final int done=added;final String lastError=error;
+            runOnUiThread(()->{
+                if(isFinishing()||isDestroyed())return;
+                toast(done+" fichier(s) importé(s)"+(lastError==null?".":" · "+lastError));
+                if(target>0&&store.get(target)!=null)detail(target);
+                else fileManager();
+            });
+        });
+    }
+    private void openEvidence(Store.Evidence file){
+        try{
+            FileVault.safeFile(this,file.path);
+            Uri uri=new Uri.Builder().scheme("content").authority("fr.sync30.lesfaits.evidence")
+                .appendPath(String.valueOf(file.id)).build();
+            Intent view=new Intent(Intent.ACTION_VIEW);
+            view.setDataAndType(uri,file.mime);
+            view.setClipData(ClipData.newRawUri("LES FAITS",uri));
+            view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(view,"Ouvrir "+FileVault.kind(file.mime)));
+        }catch(Exception ex){toast("Lecteur indisponible : "+ex.getClass().getSimpleName());}
+    }
+    private void chooseReportsForFile(long fileId){
+        Store.Evidence file=store.file(fileId);
+        if(file==null){toast("Fichier introuvable.");fileManager();return;}
+        List<Store.Incident> incidents=store.all();
+        if(incidents.isEmpty()){toast("Crée d'abord un signalement.");return;}
+        String[] labels=new String[incidents.size()];boolean[] selected=new boolean[incidents.size()];
+        for(int k=0;k<incidents.size();k++){
+            Store.Incident i=incidents.get(k);
+            labels[k]="N°"+i.id+" · "+i.title;
+            for(Store.Evidence linked:store.filesForIncident(i.id))
+                if(linked.id==fileId){selected[k]=true;break;}
+        }
+        new AlertDialog.Builder(this).setTitle("Associer : "+file.name)
+            .setMultiChoiceItems(labels,selected,(dialog,which,isChecked)->selected[which]=isChecked)
+            .setNegativeButton("Annuler",null)
+            .setPositiveButton("Enregistrer",(dialog,which)->{
+                for(int k=0;k<incidents.size();k++){
+                    if(selected[k])store.linkEvidence(incidents.get(k).id,fileId);
+                    else store.unlinkEvidence(incidents.get(k).id,fileId);
+                }
+                toast("Associations enregistrées.");fileManager();
+            }).show();
+    }
+    private void chooseFilesForReport(long reportId){
+        List<Store.Evidence> files=store.files();
+        if(files.isEmpty()){pickEvidence(reportId);return;}
+        String[] labels=new String[files.size()];boolean[] selected=new boolean[files.size()];
+        for(int k=0;k<files.size();k++){
+            Store.Evidence file=files.get(k);
+            labels[k]=file.name+" · "+FileVault.kind(file.mime);
+            for(Store.Evidence linked:store.filesForIncident(reportId))
+                if(linked.id==file.id){selected[k]=true;break;}
+        }
+        new AlertDialog.Builder(this).setTitle("Pièces jointes du rapport n°"+reportId)
+            .setMultiChoiceItems(labels,selected,(dialog,which,isChecked)->selected[which]=isChecked)
+            .setNegativeButton("Annuler",null)
+            .setPositiveButton("Enregistrer",(dialog,which)->{
+                for(int k=0;k<files.size();k++){
+                    if(selected[k])store.linkEvidence(reportId,files.get(k).id);
+                    else store.unlinkEvidence(reportId,files.get(k).id);
+                }
+                toast("Pièces jointes mises à jour.");detail(reportId);
+            }).show();
     }
     private void form(){
         newPhotos.clear();formTime=System.currentTimeMillis();
@@ -403,6 +668,26 @@ public class MainActivity extends Activity {
                 }catch(Exception ignored){}
             }
         }
+
+        LinearLayout filesCard=card(body);
+        List<Store.Evidence> attached=store.filesForIncident(id);
+        filesCard.addView(text("Pièces jointes · "+attached.size(),17,BLUE,true));
+        filesCard.addView(text("Photos, vidéos, enregistrements, PDF et documents associés à ce dossier.",12,MUTED,false));
+        addButton(filesCard,"＋ Importer une pièce pour ce rapport",BLUE,()->pickEvidence(id));
+        addButton(filesCard,"Associer des fichiers déjà importés",NAVY,()->chooseFilesForReport(id));
+        for(Store.Evidence file:attached){
+            LinearLayout row=card(body);
+            row.addView(text(file.name,15,INK,true));
+            row.addView(text(FileVault.kind(file.mime)+" · "+FileVault.sizeLabel(file.size),12,MUTED,false));
+            addButton(row,"Ouvrir cette pièce",BLUE,()->openEvidence(file));
+            addButton(row,"Détacher de ce rapport",NAVY,()->
+                new AlertDialog.Builder(this).setTitle("Retirer le lien ?")
+                    .setMessage("Le fichier restera dans la bibliothèque et les autres rapports.")
+                    .setNegativeButton("Annuler",null)
+                    .setPositiveButton("Détacher",(d,w)->{
+                        store.unlinkEvidence(id,file.id);detail(id);
+                    }).show());
+        }
         LinearLayout actions=card(body);
         actions.addView(text("Suivi du problème",17,BLUE,true));
         Spinner status=spinner(actions,"État du dossier",STATUSES);
@@ -428,7 +713,7 @@ public class MainActivity extends Activity {
         addButton(body,"Exporter ce dossier en PDF",GREEN,()->exportPdf(Collections.singletonList(item)));
         addButton(body,"Supprimer ce dossier",0xFFB13E42,()->new AlertDialog.Builder(this)
             .setTitle("Supprimer définitivement ?")
-            .setMessage("Le fait, ses photos et ses observations seront effacés du téléphone.")
+            .setMessage("Ce dossier, ses anciennes photos et ses observations seront effacés. Les fichiers de la bibliothèque seront conservés pour les autres rapports.")
             .setNegativeButton("Annuler",null)
             .setPositiveButton("Supprimer",(d,w)->{store.delete(id);history();}).show());
     }
@@ -447,8 +732,9 @@ public class MainActivity extends Activity {
         summary.addView(text("TRACE · Personnel / Terrain : "+terrain,14,INK,false));
         summary.addView(text("RAPPORT · Affaires personnelles : "+personal,14,INK,false));
         summary.addView(text("Problèmes récurrents : "+recurring,14,INK,false));
+        summary.addView(text("Fichiers dans ma bibliothèque : "+store.files().size(),14,INK,false));
         gap(body,10);
-        actionCard(body,"Exporter tous les dossiers en PDF","Rapport daté, suivi, preuves photographiques","▤",BLUE,()->exportPdf(store.all()));
+        actionCard(body,"Exporter tous les dossiers en PDF","Rapport daté et inventaire des pièces (vidéos non intégrées au PDF)","▤",BLUE,()->exportPdf(store.all()));
         body.addView(text("Les rapports PDF sont enregistrés à l'emplacement que tu choisis sur ton téléphone. Aucun envoi automatique.",12,MUTED,false));
     }
     private void exportPdf(List<Store.Incident> list){
@@ -494,12 +780,12 @@ public class MainActivity extends Activity {
                 toast(checked?"Connexion MCP autorisée":"Connexion MCP désactivée");
             });
             c.addView(share);
-            if(!"true".equals(prefs.value("worker_write_enabled"))){
-                c.addView(text("Pour enregistrer des faits depuis ChatGPT, crée une nouvelle invitation MCP puis réassocie LES FAITS. Les dossiers existants seront conservés.",12,MUTED,false));
+            if(!"true".equals(prefs.value("worker_write_enabled"))||!"true".equals(prefs.value("worker_files_enabled"))){
+                c.addView(text("Pour que ChatGPT puisse associer les fichiers aux rapports, crée une invitation MCP et réassocie LES FAITS. Les dossiers et fichiers existants sont conservés.",12,MUTED,false));
                 EditText renewal=edit(c,"Nouvelle invitation MCP","Coller le code de réassociation",false);
-                addButton(c,"Activer la création de signalements",BLUE,()->new AlertDialog.Builder(this)
-                    .setTitle("Autoriser les enregistrements ChatGPT ?")
-                    .setMessage("La réassociation permet de demander la création de dossiers sur ce téléphone. Les écritures nécessitent l’approbation prévue par le serveur CHK Universal.")
+                addButton(c,"Activer la gestion des fichiers ChatGPT",BLUE,()->new AlertDialog.Builder(this)
+                    .setTitle("Autoriser les fichiers et rapports depuis ChatGPT ?")
+                    .setMessage("La réassociation ajoute la consultation des fichiers et leur liaison aux rapports depuis ChatGPT. Les écritures restent soumises aux approbations du serveur CHK Universal.")
                     .setNegativeButton("Annuler",null)
                     .setPositiveButton("Réassocier",(d,w)->McpWorkerClient.pair(getApplicationContext(),renewal.getText().toString().trim(),(ok,message)->
                         new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
@@ -518,9 +804,9 @@ public class MainActivity extends Activity {
         }
         LinearLayout info=card(body);
         info.addView(text("Consultation et création depuis ChatGPT",17,BLUE,true));gap(info,7);
-        info.addView(text("Lorsque le partage est actif, LES FAITS répond aux demandes de ton MCP : lister les faits, consulter un dossier, enregistrer un nouveau signalement (après association autorisant l’écriture) et obtenir les statistiques. La vérification se fait à l'ouverture, puis périodiquement en arrière-plan selon les restrictions de batterie Android. Les rapports restent dans le téléphone tant que ChatGPT ne les demande pas.",13,INK,false));
+        info.addView(text("Lorsque le partage est actif, LES FAITS peut lister les faits, consulter ou créer un signalement et associer une pièce déjà importée à un rapport après réassociation et autorisation. Seules les métadonnées des fichiers sont transmises, jamais les vidéos ou photos elles-mêmes. La vérification a lieu à l’ouverture, puis périodiquement selon Android.",13,INK,false));
         gap(info,8);
-        info.addView(text("Aucune nouvelle URL de serveur. Les fichiers PDF et les photos ne sont pas transmis.",12,MUTED,false));
+        info.addView(text("Les médias restent sur le téléphone. ChatGPT peut consulter les noms et identifiants des fichiers puis demander de les associer aux rapports ; les octets des vidéos et photos ne sont pas transmis.",12,MUTED,false));
         LinearLayout updateCard=card(body);
         updateCard.addView(text("SkillMajAuto · Mises à jour",18,BLUE,true));
         gap(updateCard,6);
@@ -567,7 +853,9 @@ public class MainActivity extends Activity {
         super.onActivityResult(request,result,data);
         if(result!=RESULT_OK||data==null)return;
         try {
-            if(request==PICK_PHOTO){
+            if(request==PICK_EVIDENCE){
+                importEvidence(data);
+            }else if(request==PICK_PHOTO){
                 if(data.getClipData()!=null){
                     for(int i=0;i<data.getClipData().getItemCount();i++){
                         newPhotos.add(copyPhoto(data.getClipData().getItemAt(i).getUri()));
