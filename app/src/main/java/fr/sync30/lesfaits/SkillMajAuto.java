@@ -148,7 +148,20 @@ final class SkillMajAuto {
                     if(activity.isFinishing()||activity.isDestroyed())return;
                     if(newer) {
                         notifyUpdate(activity,release);
-                        promptUpdate(activity,release);
+                        if(manual) {
+                            startDownload(activity,release);
+                        } else if(autoEnabled(activity)) {
+                            android.content.SharedPreferences prefs=activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+                            if(!release.version.equals(prefs.getString("auto_offered_version",""))) {
+                                if(activity.getPackageManager().canRequestPackageInstalls()) {
+                                    prefs.edit().putString("auto_offered_version",release.version).apply();
+                                    startDownload(activity,release);
+                                } else {
+                                    // Android requires this one-time authorization. No browser or APK handling.
+                                    promptUpdate(activity,release);
+                                }
+                            }
+                        }
                     }
                     else if(manual){
                         new AlertDialog.Builder(activity).setTitle("Mises à jour")
@@ -266,6 +279,8 @@ final class SkillMajAuto {
                 });
             }catch(Exception e){
                 dest.delete();
+                // Permit an automatic retry after a transient download error.
+                activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().remove("auto_offered_version").apply();
                 Log.w(TAG,"Update failed",e);
                 String message=e.getMessage()==null?"Erreur inconnue":e.getMessage();
                 activity.runOnUiThread(()->{
