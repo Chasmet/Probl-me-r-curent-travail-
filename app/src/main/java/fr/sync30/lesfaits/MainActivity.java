@@ -166,6 +166,13 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);
         p.topMargin=dp(7);p.bottomMargin=dp(5);parent.addView(b,p);
     }
+    private void compactButton(LinearLayout parent,String title,int color,Runnable task){
+        TextView b=button(title,color,task);
+        b.setTextSize(13);
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);
+        p.leftMargin=dp(4);p.rightMargin=dp(4);p.topMargin=dp(6);
+        parent.addView(b,p);
+    }
     private void base(String screen,String selectedTab){
         root=vertical();root.setBackgroundColor(BG);
         root.setOnApplyWindowInsetsListener((view,insets)->{
@@ -394,8 +401,10 @@ public class MainActivity extends Activity {
                 meta.addView(text(item.linkedCount+" rapport(s) lié(s)",11,item.linkedCount>0?GREEN:MUTED,false));
                 LinearLayout.LayoutParams m=new LinearLayout.LayoutParams(0,-2,1);m.leftMargin=dp(12);
                 head.addView(meta,m);card.addView(head);
-                addButton(card,"Ouvrir / consulter",NAVY,()->openEvidence(item));
-                addButton(card,"Associer à mes rapports",BLUE,()->chooseReportsForFile(item.id));
+                LinearLayout controls=horizontal();
+                compactButton(controls,"Ouvrir",NAVY,()->openEvidence(item));
+                compactButton(controls,"Lier aux rapports",BLUE,()->chooseReportsForFile(item.id));
+                card.addView(controls);
                 if(item.linkedCount==0)addButton(card,"Supprimer de la bibliothèque",0xFF9D4D53,()->
                     new AlertDialog.Builder(this).setTitle("Supprimer ce fichier ?")
                         .setMessage("Il sera définitivement supprimé de la mémoire de LES FAITS.")
