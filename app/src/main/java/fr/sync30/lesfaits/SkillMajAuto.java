@@ -48,6 +48,8 @@ final class SkillMajAuto {
     private static final String DOWNLOAD_PREFIX="https://github.com/Chasmet/Probl-me-r-curent-travail-/releases/download/";
     private static final ExecutorService pool=Executors.newSingleThreadExecutor();
     private static final long CHECK_INTERVAL=12L*60*60*1000;
+    private static final long FOREGROUND_INTERVAL=15L*60*1000;
+    private static final java.util.concurrent.atomic.AtomicBoolean checking=new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final long MAX_APK=150L*1024*1024;
     private static final String PREFS="lesfaits_skillmajauto";
     private static final int JOB_ID=53030;
@@ -66,13 +68,16 @@ final class SkillMajAuto {
     static void setAuto(Context ctx,boolean enabled){
         ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putBoolean("automatic",enabled).apply();
         schedule(ctx);
+        if(enabled && ctx instanceof Activity)check((Activity)ctx,false);
     }
     static void onAppOpen(Activity activity) {
         schedule(activity);
         if(!autoEnabled(activity))return;
         long now=System.currentTimeMillis();
         long last=activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("last_check",0);
-        if(last>0 && now-last<CHECK_INTERVAL && now>=last)return;
+        if(last>0 && now-last<FOREGROUND_INTERVAL && now>=last)return;
+        long attempt=activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("last_attempt",0);
+        if(attempt>0 && now>=attempt && now-attempt<60_000L)return;
         check(activity,false);
     }
     /** Periodic check when Android permits it. Installation is never silent. */
@@ -128,28 +133,39 @@ final class SkillMajAuto {
         check(activity,true);
     }
     static void check(Activity activity,boolean manual) {
+        if(!checking.compareAndSet(false,true)){
+            if(manual)Toast.makeText(activity,"Une vérification est déjà en cours.",Toast.LENGTH_SHORT).show();
+            return;
+        }
+        activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putLong("last_attempt",System.currentTimeMillis()).apply();
         pool.execute(()->{
             try {
                 Release release=latest();
                 long now=System.currentTimeMillis();
-                activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putLong("last_check",now).apply();
+                if(release!=null)activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putLong("last_check",now).apply();
                 boolean newer=release!=null && compareVersion(release.version,versionName(activity))>0;
                 activity.runOnUiThread(()->{
                     if(activity.isFinishing()||activity.isDestroyed())return;
-                    if(newer) promptUpdate(activity,release);
+                    if(newer) {
+                        notifyUpdate(activity,release);
+                        promptUpdate(activity,release);
+                    }
                     else if(manual){
                         new AlertDialog.Builder(activity).setTitle("Mises à jour")
-                            .setMessage(release==null?"Aucune APK officielle publiée sur GitHub Releases. La recherche automatique est prête, mais la première version signée doit encore être publiée.":"Aucune version plus récente n'est disponible.")
+                            .setMessage(release==null?"Aucune APK stable compatible n’a été trouvée sur GitHub Releases. Les préversions de test sont ignorées pour protéger tes données. Le contrôle automatique reste actif.":"Aucune version plus récente n'est disponible.")
                             .setPositiveButton("OK",null).show();
                     }
                 });
             } catch(Exception e){
                 Log.w(TAG,"Check failed: "+e.getClass().getSimpleName());
-                if(manual)activity.runOnUiThread(()->new AlertDialog.Builder(activity)
-                    .setTitle("Vérification impossible")
-                    .setMessage("Connexion à GitHub indisponible. Réessaie lorsque le réseau est disponible.")
-                    .setPositiveButton("OK",null).show());
-            }
+                if(manual)activity.runOnUiThread(()->{
+                    if(activity.isFinishing()||activity.isDestroyed())return;
+                    new AlertDialog.Builder(activity)
+                        .setTitle("Vérification impossible")
+                        .setMessage("GitHub n’a pas pu être consulté : "+(e.getMessage()==null?"erreur réseau":e.getMessage())+". La vérification automatique reste active.")
+                        .setPositiveButton("OK",null).show();
+                });
+            } finally {checking.set(false);}
         });
     }
     static String versionName(Context context) {
