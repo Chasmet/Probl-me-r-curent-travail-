@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
 import android.content.Intent;
+import android.content.ClipData;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -12,6 +13,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
 import android.text.Editable;
@@ -43,11 +46,13 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int BLUE=0xFF0A57C8, NAVY=0xFF092B62, GREEN=0xFF169D54;
     private static final int BG=0xFFF4F7FC, INK=0xFF173154, MUTED=0xFF63758D;
-    private static final int PICK_PHOTO=101, CAMERA=102, DICTATE=103, SAVE_PDF=104;
+    private static final int PICK_PHOTO=101, CAMERA=102, DICTATE=103, SAVE_PDF=104, PICK_EVIDENCE=105;
     private static final String[] SPACES={"TRACE — Personnel / Terrain","RAPPORT — Affaires personnelles"};
     private static final String[] CATEGORIES={"Matériel défectueux","Sécurité / Risque","Conditions de travail","Organisation / Service","Accident / Quasi-accident","Situation personnelle","Démarche administrative","Autre"};
     private static final String[] SEVERITIES={"Normale","Élevée","Critique"};
@@ -61,6 +66,8 @@ public class MainActivity extends Activity {
     private EditText dictationTarget;
     private List<Store.Incident> pendingPdf;
     private long formTime=System.currentTimeMillis();
+    private long pendingEvidenceIncident=-1L;
+    private static final ExecutorService fileIo=Executors.newSingleThreadExecutor();
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);store=new Store(this);prefs=new SecurePrefs(this);
@@ -178,6 +185,7 @@ public class MainActivity extends Activity {
         nav.setPadding(dp(5),dp(8),dp(5),dp(7));
         navItem(nav,"⌂","Accueil","home".equals(selectedTab),this::home);
         navItem(nav,"▤","Historique","list".equals(selectedTab),()->history());
+        navItem(nav,"▧","Fichiers","vault".equals(selectedTab),this::fileManager);
         navItem(nav,"▣","Rapports","report".equals(selectedTab),this::reports);
         root.addView(nav,new LinearLayout.LayoutParams(-1,dp(65)));
     }
@@ -222,6 +230,7 @@ public class MainActivity extends Activity {
         base("Tout consigner, dater, prouver.","home");
         actionCard(body,"Nouveau signalement","Décrire un fait et joindre des preuves","＋",BLUE,this::form);
         actionCard(body,"Mises à jour","Rechercher la dernière version de LES FAITS","⟳",GREEN,()->SkillMajAuto.check(this,true));
+        actionCard(body,"Mes fichiers et preuves","Photos, vidéos, PDF et documents liés aux dossiers","▧",BLUE,this::fileManager);
         heading(body,"Mes espaces");
         actionCard(body,"TRACE · Personnel / Terrain","Incidents, matériel, organisation, sécurité","⌖",BLUE,()->history("TERRAIN"));
         actionCard(body,"RAPPORT · Affaires personnelles","Dossiers et événements du quotidien","▣",GREEN,()->history("PERSONNEL"));
@@ -250,6 +259,8 @@ public class MainActivity extends Activity {
         gap(c,5);
         int color="Résolu".equals(i.status)?GREEN:("Critique".equals(i.severity)?0xFFD04D21:BLUE);
         c.addView(text(i.status+(i.recurring?"  •  Récurrent":""),12,color,true));
+        int attachments=store.filesForIncident(i.id).size();
+        if(attachments>0)c.addView(text(attachments+" pièce(s) jointe(s)",11,MUTED,false));
         c.setOnClickListener(v->detail(i.id));
     }
     private void history(){history("TOUT");}
