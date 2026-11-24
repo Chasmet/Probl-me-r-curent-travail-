@@ -5,6 +5,7 @@ on:
     paths:
       - 'app/**'
       - '.github/workflows/startup-smoke.yml'
+      - '.github/scripts/startup-smoke.sh'
   workflow_dispatch:
 
 permissions:
