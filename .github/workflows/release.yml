@@ -12,7 +12,7 @@ on:
       version:
         description: "Version officielle (identique à app/build.gradle, ex. 0.3.0)"
         required: true
-        default: "0.8.0"
+        default: "0.8.1"
 
 permissions:
   contents: write
@@ -58,9 +58,10 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "$VERSION" = "$GRADLE_VERSION"
           echo "LF_VERSION=$VERSION" >> "$GITHUB_ENV"
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
+          if gh release view "v$VERSION" --json isDraft,isPrerelease,assets > "$RUNNER_TEMP/lesfaits-existing-release.json" 2>/dev/null; then
+            jq -e '(.isDraft|not) and (.isPrerelease|not) and any(.assets[]; .name=="LES-FAITS-SYNC30.apk" and .size>10000)' "$RUNNER_TEMP/lesfaits-existing-release.json" >/dev/null || { echo "::error::Le tag existe sans APK officielle stable. Publier avec un nouveau numéro de version."; exit 1; }
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "La version v$VERSION est déjà publiée."
+            echo "La version v$VERSION est déjà publiée avec son APK officielle."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -84,7 +85,30 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk LES-FAITS-SYNC30.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose LES-FAITS-SYNC30.apk
           test "$(stat -c%s LES-FAITS-SYNC30.apk)" -gt 10000
-          sha256sum LES-FAITS-SYNC30.apk
+          sha256sum LES-FAITS-SYNC30.apk > LES-FAITS-SYNC30.apk.sha256
+          cat LES-FAITS-SYNC30.apk.sha256
+      - name: Contrôler la continuité du certificat avec la dernière version stable
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="repos/$GITHUB_REPOSITORY/releases/latest"
+          if gh api "$api" > "$RUNNER_TEMP/lesfaits-latest.json" 2>"$RUNNER_TEMP/lesfaits-api-error"; then
+            tag="$(jq -r .tag_name "$RUNNER_TEMP/lesfaits-latest.json")"
+            mkdir -p "$RUNNER_TEMP/lesfaits-prior"
+            gh release download "$tag" --pattern LES-FAITS-SYNC30.apk --dir "$RUNNER_TEMP/lesfaits-prior"
+            signer="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+            fingerprint() { "$signer" verify --print-certs "$1" | sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p' | sort; }
+            old="$(fingerprint "$RUNNER_TEMP/lesfaits-prior/LES-FAITS-SYNC30.apk")"
+            new="$(fingerprint LES-FAITS-SYNC30.apk)"
+            test -n "$old" && test "$old" = "$new" || { echo "::error::Certificat différent de la dernière version stable. Publication refusée pour préserver les données."; exit 1; }
+          elif ! grep -q "HTTP 404" "$RUNNER_TEMP/lesfaits-api-error"; then
+            cat "$RUNNER_TEMP/lesfaits-api-error"; exit 1
+          else
+            echo "Première version stable : la clé doit correspondre à celle des APK déjà distribuées."
+          fi
       - name: Publier sur GitHub Releases (source des mises à jour)
         if: steps.version.outputs.skip != 'true'
         env:
@@ -92,9 +116,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release create "v$VERSION" LES-FAITS-SYNC30.apk \
+          gh release create "v$VERSION" LES-FAITS-SYNC30.apk LES-FAITS-SYNC30.apk.sha256 \
+            --target "$GITHUB_SHA" --latest \
             --title "LES FAITS — SYNC 30 v$VERSION" \
             --notes "Mise à jour officielle Android signée. Depuis l'application : Réglages → Mises à jour automatiques. Les signalements restent sur le téléphone lors d'une mise à jour signée par la même clé."
+      - name: Vérifier que SkillMajAuto voit la version officielle
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="sha256:$(cut -d" " -f1 LES-FAITS-SYNC30.apk.sha256)"
+          for attempt in 1 2 3 4 5; do
+            if gh api "repos/$GITHUB_REPOSITORY/releases/latest" | jq -e --arg tag "v$LF_VERSION" --arg digest "$digest" '.tag_name==$tag and (.draft|not) and (.prerelease|not) and any(.assets[]; .name=="LES-FAITS-SYNC30.apk" and .digest==$digest)' >/dev/null; then exit 0; fi
+            sleep 5
+          done
+          echo "::error::GitHub Latest ne présente pas encore l’APK attendue avec son SHA-256."; exit 1
       - name: Conserver une copie de l'APK publiée
         if: steps.version.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
