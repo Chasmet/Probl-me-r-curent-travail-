@@ -32,26 +32,11 @@ final class FileVault {
     }
     static String allowedMime(String mime,String name)throws IOException{
         String m=(mime==null?"":mime).toLowerCase(Locale.ROOT).trim();
-        String n=(name==null?"":name).toLowerCase(Locale.ROOT);
-        if("application/octet-stream".equals(m)||m.isEmpty()){
-            if(n.endsWith(".pdf"))m="application/pdf";
-            else if(n.endsWith(".txt"))m="text/plain";
-            else if(n.endsWith(".docx"))m="application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            else if(n.endsWith(".xlsx"))m="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            else if(n.endsWith(".mp4"))m="video/mp4";
-            else if(n.endsWith(".jpg")||n.endsWith(".jpeg"))m="image/jpeg";
-            else if(n.endsWith(".png"))m="image/png";
-        }
-        if(m.startsWith("image/")||m.startsWith("video/")||m.startsWith("audio/")
-            ||m.equals("application/pdf")||m.equals("text/plain")
-            ||m.equals("application/msword")||m.equals("application/vnd.ms-excel")
-            ||m.equals("application/vnd.ms-powerpoint")
-            ||m.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            ||m.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            ||m.equals("application/vnd.openxmlformats-officedocument.presentationml.presentation")
-            ||m.equals("application/rtf")||m.equals("text/csv"))
-            return m;
-        throw new IOException("Type refusé : photos, vidéos, audio, PDF et documents uniquement");
+        if (!m.isEmpty() && !m.equals("application/octet-stream") && m.matches("[a-z0-9.+_-]+/[a-z0-9.+_-]+")) return m;
+        int dot=name.lastIndexOf('.');
+        String ext=dot<0?"":name.substring(dot+1).toLowerCase(Locale.ROOT);
+        String detected=android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
+        return detected==null?"application/octet-stream":detected;
     }
     static String displayName(String input){
         String clean=input==null?"":input.replaceAll("[\\\\/\\p{Cntrl}]", "_").trim();

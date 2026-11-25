@@ -181,6 +181,7 @@ final class SkillMajAuto {
             } finally {checking.set(false);}
         });
     }
+    static long lastCheck(Context ctx){return ctx.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("last_check",0);}
     static String versionName(Context context) {
         try{return context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;}
         catch(Exception e){return "0.0.0";}
@@ -267,11 +268,13 @@ final class SkillMajAuto {
         final android.app.ProgressDialog progress=new android.app.ProgressDialog(activity);
         progress.setTitle("Téléchargement de la mise à jour");
         progress.setMessage("Vérification de l'APK signé…");
-        progress.setIndeterminate(true);progress.setCancelable(false);progress.show();
+        progress.setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);progress.setMax(100);progress.setIndeterminate(true);progress.setCancelable(false);progress.show();
         pool.execute(()->{
             File dest=new File(activity.getCacheDir(),"lesfaits-update.apk");
             try{
-                download(release,dest);
+                download(release,dest,pct->activity.runOnUiThread(()->{
+                    if(progress.isShowing()){progress.setIndeterminate(false);progress.setProgress(pct);}
+                }));
                 verifyApk(activity,dest);
                 activity.runOnUiThread(()->{
                     progress.dismiss();
@@ -292,7 +295,7 @@ final class SkillMajAuto {
             }
         });
     }
-    private static void download(Release release,File dest)throws Exception{
+    private static void download(Release release,File dest,java.util.function.IntConsumer progress)throws Exception{
         URL url=new URL(release.url);
         HttpURLConnection c=null;
         try{
@@ -306,10 +309,14 @@ final class SkillMajAuto {
             if(contentLength>MAX_APK)throw new Exception("APK trop volumineux.");
             MessageDigest sha=MessageDigest.getInstance("SHA-256");
             try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(dest)){
-                byte[] buffer=new byte[8192];int n;long size=0;
+                byte[] buffer=new byte[8192];int n;long size=0;int lastPercent=-1;
                 while((n=in.read(buffer))!=-1){
                     size+=n;if(size>MAX_APK)throw new Exception("APK trop volumineux.");
                     sha.update(buffer,0,n);out.write(buffer,0,n);
+                    if(contentLength>0){
+                        int percent=(int)Math.min(100,100L*size/contentLength);
+                        if(percent!=lastPercent){progress.accept(percent);lastPercent=percent;}
+                    }
                 }
                 if(size<1024)throw new Exception("APK incomplet.");
             }

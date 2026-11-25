@@ -66,3 +66,8 @@ if grep -q -E 'FATAL EXCEPTION|Process: fr.sync30.lesfaits' startup-artifacts/le
 fi
 adb shell pidof fr.sync30.lesfaits || { echo 'ÉCHEC : LES FAITS a quitté en ouvrant la bibliothèque'; exit 1; }
 
+
+gradle :app:assembleDebugAndroidTest
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w fr.sync30.lesfaits.test/fr.sync30.lesfaits.ReportChecks | tee startup-artifacts/report-checks.txt
+grep -q 'checks=reports-documents-ok' startup-artifacts/report-checks.txt
