@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
     private static final String[] STATUSES={"Signalé","En cours","Résolu","Classé"};
     private final SimpleDateFormat datetime=new SimpleDateFormat("dd/MM/yyyy HH:mm",Locale.FRANCE);
     private Store store;
+    private PersonalNotes personalNotes;
     private SecurePrefs prefs;
     private LinearLayout root, body;
     private final List<String> newPhotos=new ArrayList<>();
@@ -105,7 +106,7 @@ public class MainActivity extends Activity {
     private long lastForegroundPoll=0;
 
     @Override public void onCreate(Bundle b){
-        super.onCreate(b);store=new Store(this);prefs=new SecurePrefs(this);
+        super.onCreate(b);store=new Store(this);personalNotes=new PersonalNotes(this);prefs=new SecurePrefs(this);
         getWindow().setStatusBarColor(NAVY);getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         Bundle draft=b==null?null:b.getBundle("report_editor");
@@ -229,11 +230,11 @@ public class MainActivity extends Activity {
             return insets;
         });
         setContentView(root);
-        LinearLayout top=vertical();top.setPadding(dp(20),dp(15),dp(20),dp(16));
+        LinearLayout top=vertical();top.setPadding(dp(16),dp(8),dp(16),dp(10));
         top.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{NAVY,BLUE}));
         LinearLayout row=horizontal();
         LinearLayout brand=vertical();
-        TextView title=text("LES FAITS",25,Color.WHITE,true);
+        TextView title=text("LES FAITS",22,Color.WHITE,true);
         TextView sign=text("▰  SYNC 30",11,0xFFBEDEFF,true);
         brand.addView(title);brand.addView(sign);
         row.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
@@ -243,11 +244,11 @@ public class MainActivity extends Activity {
         row.addView(settings);top.addView(row);
         if(!screen.isEmpty()){
             TextView sub=text(screen,13,0xFFEAF4FF,false);
-            LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(10);top.addView(sub,p);
+            LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(4);top.addView(sub,p);
         }
         root.addView(top,new LinearLayout.LayoutParams(-1,-2));
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);
-        body=vertical();body.setPadding(dp(16),dp(18),dp(16),dp(30));
+        body=vertical();body.setPadding(dp(12),dp(12),dp(12),dp(20));
         scroll.addView(body,new ScrollView.LayoutParams(-1,-2));
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout nav=horizontal();nav.setBackgroundColor(Color.WHITE);
@@ -256,16 +257,17 @@ public class MainActivity extends Activity {
         navItem(nav,"▤","Historique","list".equals(selectedTab),()->history());
         navItem(nav,"▧","Fichiers","vault".equals(selectedTab),this::fileManager);
         navItem(nav,"▣","Rapports","report".equals(selectedTab),this::reports);
+        navItem(nav,"✎","Notes","notes".equals(selectedTab),this::showPersonalNotes);
         root.addView(nav,new LinearLayout.LayoutParams(-1,dp(65)));
     }
     private void navItem(LinearLayout nav,String icon,String title,boolean active,Runnable action){
         LinearLayout wrapper=vertical();wrapper.setGravity(Gravity.CENTER);
         wrapper.setBackground(shape(active?0xFFE9F2FF:Color.WHITE,14));
         TextView symbol=text(icon,22,active?BLUE:MUTED,true);symbol.setGravity(Gravity.CENTER);
-        TextView label=text(title,11,active?BLUE:MUTED,active);label.setGravity(Gravity.CENTER);
+        TextView label=text(title,10,active?BLUE:MUTED,active);label.setGravity(Gravity.CENTER);label.setSingleLine(true);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
         wrapper.addView(symbol);wrapper.addView(label);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);
-        p.leftMargin=dp(3);p.rightMargin=dp(3);nav.addView(wrapper,p);
+        p.leftMargin=dp(1);p.rightMargin=dp(1);nav.addView(wrapper,p);
         wrapper.setFocusable(true);wrapper.setContentDescription(title);wrapper.setSelected(active);
         wrapper.setOnClickListener(v->leaveForm(action));
     }
@@ -776,8 +778,13 @@ public class MainActivity extends Activity {
         base("Détail du signalement n° "+id,"list");
         LinearLayout c=card(body);
         c.addView(text(item.title,22,INK,true));gap(c,7);
-        c.addView(text(item.status,14,BLUE,true));
-        addButton(c,"Modifier le rapport",BLUE,()->form(item));
+        TextView state=text(item.status,13,"Résolu".equals(item.status)?GREEN:BLUE,true);
+        state.setPadding(dp(10),dp(5),dp(10),dp(5));state.setBackground(shape("Résolu".equals(item.status)?0xFFE7F8ED:0xFFE8F2FF,10));
+        c.addView(state,new LinearLayout.LayoutParams(-2,-2));
+        LinearLayout quick=horizontal();c.addView(quick);
+        compactButton(quick,"Modifier",BLUE,()->form(item));
+        compactButton(quick,"Exporter PDF",GREEN,()->exportPdf(Collections.singletonList(item)));
+        gap(c,8);
         c.addView(text("Date du fait : "+labelDate(item.occurred),13,MUTED,false));
         c.addView(text("Espace : "+("TERRAIN".equals(item.space)?SPACES[0]:SPACES[1]),13,MUTED,false));
         c.addView(text("Catégorie : "+item.category,13,MUTED,false));
@@ -804,8 +811,9 @@ public class MainActivity extends Activity {
         List<Store.Evidence> attached=store.filesForIncident(id);
         filesCard.addView(text("Pièces jointes · "+attached.size(),17,BLUE,true));
         filesCard.addView(text("Photos, vidéos, enregistrements, PDF et documents associés à ce dossier.",12,MUTED,false));
-        addButton(filesCard,"＋ Importer une pièce pour ce rapport",BLUE,()->pickEvidence(id));
-        addButton(filesCard,"Associer des fichiers déjà importés",NAVY,()->chooseFilesForReport(id));
+        LinearLayout fileActions=horizontal();filesCard.addView(fileActions);
+        compactButton(fileActions,"Importer",BLUE,()->pickEvidence(id));
+        compactButton(fileActions,"Associer",NAVY,()->chooseFilesForReport(id));
         for(Store.Evidence file:attached){
             LinearLayout row=card(body);
             row.addView(text(file.name,15,INK,true));
@@ -841,16 +849,20 @@ public class MainActivity extends Activity {
                 nc.addView(text(n.text,14,INK,false));
             }
         }
-        addButton(body,"Exporter ce dossier en PDF",GREEN,()->exportPdf(Collections.singletonList(item)));
+        LinearLayout management=card(body);
+        management.addView(text("Gestion du dossier",17,INK,true));
+        management.addView(text("Fusion et archivage réversible. Les preuves sont conservées.",12,MUTED,false));
         boolean archived=false;
         for(Store.Incident a:store.archived())if(a.id==id){archived=true;break;}
         final boolean inArchive=archived;
-        if(!inArchive) addButton(body,"Fusionner avec un autre rapport",NAVY,()->chooseMergeSource(item));
-        addButton(body,inArchive?"Restaurer ce dossier":"Archiver ce dossier (réversible)",inArchive?GREEN:0xFFB13E42,()->{
-            try{
-                store.archiveMcp(id,item.title,"Action dans l'application",inArchive,java.util.UUID.randomUUID().toString());
-                history(inArchive?"TOUT":"ARCHIVES");
-            }catch(Exception e){toast("Impossible : "+e.getMessage());}
+        if(!inArchive) addButton(management,"Fusionner avec un autre rapport",NAVY,()->chooseMergeSource(item));
+        addButton(management,inArchive?"Restaurer ce dossier":"Archiver ce dossier",inArchive?GREEN:0xFFB13E42,()->{
+            new AlertDialog.Builder(this).setTitle(inArchive?"Restaurer ce dossier ?":"Archiver ce dossier ?")
+                .setMessage("Cette opération est réversible. Les preuves et observations restent conservées.")
+                .setNegativeButton("Annuler",null).setPositiveButton("Confirmer",(d,w)->{
+                    try{store.archiveMcp(id,item.title,"Action dans l’application",inArchive,UUID.randomUUID().toString());history(inArchive?"TOUT":"ARCHIVES");}
+                    catch(Exception e){toast("Impossible : "+e.getMessage());}
+                }).show();
         });
     }
     private void chooseMergeSource(Store.Incident target){
@@ -887,6 +899,69 @@ public class MainActivity extends Activity {
         }));
         dialog.show();
     }
+    private void showPersonalNotes(){
+        base("Carnet de notes","notes");
+        LinearLayout intro=card(body);
+        intro.addView(text("Mes notes",22,INK,true));
+        intro.addView(text("Notes personnelles, rappels et brouillons indépendants des signalements. Stockage local.",13,MUTED,false));
+        addButton(intro,"＋ Nouvelle note",BLUE,()->editPersonalNote(null));
+        EditText search=edit(intro,"Rechercher","Titre ou contenu…",false);
+        CheckBox archives=new CheckBox(this);archives.setText("Afficher les notes archivées");archives.setTextColor(INK);intro.addView(archives);
+        LinearLayout results=vertical();body.addView(results);
+        Runnable refresh=()->{
+            results.removeAllViews();
+            String query=searchKey(search.getText().toString());
+            int count=0;
+            for(PersonalNotes.Entry n:personalNotes.list(archives.isChecked())){
+                if(!searchKey(n.title+" "+n.content).contains(query))continue;
+                count++;
+                LinearLayout tile=card(results);
+                tile.addView(text(n.title,17,INK,true));
+                tile.addView(text("Modifiée le "+labelDate(n.updated),11,MUTED,false));
+                gap(tile,5);
+                TextView preview=text(n.content,14,INK,false);preview.setMaxLines(4);preview.setEllipsize(android.text.TextUtils.TruncateAt.END);tile.addView(preview);
+                LinearLayout buttons=horizontal();tile.addView(buttons);
+                compactButton(buttons,"Ouvrir",BLUE,()->editPersonalNote(n));
+                compactButton(buttons,n.archived?"Restaurer":"Archiver",NAVY,()->{
+                    new AlertDialog.Builder(this).setTitle(n.archived?"Restaurer la note ?":"Archiver la note ?")
+                    .setMessage("La note reste conservée. Cette action est réversible.")
+                    .setNegativeButton("Annuler",null).setPositiveButton("Confirmer",(d,w)->{
+                        personalNotes.archive(n.id,!n.archived);refreshNotes(results,search,archives);
+                    }).show();
+                });
+            }
+            if(count==0){LinearLayout empty=card(results);empty.addView(text(query.isEmpty()?"Aucune note dans cette liste.":"Aucune note correspondante.",14,MUTED,false));}
+        };
+        search.addTextChangedListener(new TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            public void onTextChanged(CharSequence s,int start,int before,int count){refresh.run();}
+            public void afterTextChanged(Editable e){}
+        });
+        archives.setOnCheckedChangeListener((b,checked)->refresh.run());refresh.run();
+    }
+    private void refreshNotes(LinearLayout results,EditText search,CheckBox archives){
+        // Trigger the same list refresh, preserving the current search and archive filter.
+        search.setText(search.getText().toString());
+    }
+    private void editPersonalNote(PersonalNotes.Entry existing){
+        LinearLayout fields=vertical();fields.setPadding(dp(16),dp(8),dp(16),dp(12));
+        EditText title=edit(fields,"Titre","Ex. À faire demain",false);
+        EditText content=edit(fields,"Note","Écris ici…",true);
+        content.setMinLines(6);
+        if(existing!=null){title.setText(existing.title);content.setText(existing.content);}
+        ScrollView scroll=new ScrollView(this);scroll.addView(fields);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle(existing==null?"Nouvelle note":"Modifier la note")
+            .setView(scroll).setNegativeButton("Annuler",null).setPositiveButton("Enregistrer",null).create();
+        dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            String t=title.getText().toString().trim(),value=content.getText().toString().trim();
+            if(value.isEmpty()){content.setError("Écris une note.");return;}
+            if(t.isEmpty())t="Note du "+labelDate(System.currentTimeMillis());
+            try{personalNotes.save(existing==null?0:existing.id,t,value);dialog.dismiss();toast("Note enregistrée.");showPersonalNotes();}
+            catch(Exception e){toast("Enregistrement impossible. Réessaie.");}
+        }));
+        dialog.show();
+    }
+
     private void reports(){
         base("Rapports / Affaires personnelles","report");
         actionCard(body,"RAPPORT · Affaires personnelles","Consulter les faits de la vie personnelle","▣",GREEN,()->history("PERSONNEL"));
