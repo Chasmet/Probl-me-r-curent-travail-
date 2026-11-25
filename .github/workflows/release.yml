@@ -6,6 +6,7 @@ on:
       - 'app/**'
       - '.github/workflows/release.yml'
       - '.github/scripts/select-release-signer.mjs'
+      - 'signing/prepare_ci.py'
   workflow_dispatch:
     inputs:
       version:
@@ -15,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
   group: les-faits-release
@@ -63,27 +65,12 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Choisir le circuit de signature configuré
+      - name: Récupérer la signature permanente via GitHub OIDC et Render
         id: signing
         if: steps.version.outputs.skip != 'true'
-        env:
-          HAS_SECRET: ${{ secrets.LF_SIGNING_BUNDLE != '' || secrets.LF_SIGNING_P12_BASE64 != '' || secrets.LF_SIGNING_PASSWORD != '' || secrets.LF_SIGNING_KEY_PASSWORD != '' || secrets.LF_EXPECTED_CERT_SHA256 != '' }}
         run: |
-          echo "configured=$HAS_SECRET" >> "$GITHUB_OUTPUT"
-          if [ "$HAS_SECRET" != true ]; then
-            echo "::error::Aucune clé permanente disponible dans GitHub Actions. Le build non signé reste accessible dans Build Android. Le manifeste de signature hors ligne doit être actualisé pour cette version."
-            echo "Publication non effectuée : signer le build exact avec la clé existante ou configurer le secret permanent." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-      - name: Signature permanente via GitHub Secrets uniquement
-        if: steps.signing.outputs.configured == 'true'
-        env:
-          LF_SIGNING_BUNDLE: ${{ secrets.LF_SIGNING_BUNDLE }}
-          LF_SIGNING_P12_BASE64: ${{ secrets.LF_SIGNING_P12_BASE64 }}
-          LF_SIGNING_PASSWORD: ${{ secrets.LF_SIGNING_PASSWORD }}
-          LF_SIGNING_KEY_PASSWORD: ${{ secrets.LF_SIGNING_KEY_PASSWORD }}
-          LF_EXPECTED_CERT_SHA256: ${{ secrets.LF_EXPECTED_CERT_SHA256 }}
-        run: node .github/scripts/select-release-signer.mjs
+          python3 signing/prepare_ci.py
+          echo "configured=true" >> "$GITHUB_OUTPUT"
       - name: Compiler une APK officielle avec signature stable
         if: steps.signing.outputs.configured == 'true'
         run: gradle :app:assembleRelease --stacktrace
@@ -155,3 +142,6 @@ jobs:
           name: les-faits-v${{ env.LF_VERSION }}-release-apk
           path: LES-FAITS-SYNC30.apk
           retention-days: 30
+      - name: Nettoyer la clé temporaire du runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/lesfaits-official.p12"

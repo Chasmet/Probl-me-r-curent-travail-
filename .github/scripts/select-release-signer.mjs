@@ -2,7 +2,7 @@ import { writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-// GitHub Actions Secrets only. Never use temporary signing keys or external signers.
+// Validate a permanent signer obtained via the dedicated Render OIDC route.
 // A single JSON secret simplifies initial setup from Android. Legacy split secrets remain supported.
 const bundleRaw=(process.env.LF_SIGNING_BUNDLE||'').trim();
 if(bundleRaw){
@@ -28,7 +28,7 @@ if(hasBase64!==hasPassword){
   throw Error('Signature GitHub Secrets partiellement configurée : renseigner le PKCS12 et son mot de passe.');
 }
 if(!hasBase64){
-  throw Error('Clé permanente absente dans GitHub Actions Secrets. Publication bloquée sans serveur externe ni clé temporaire.');
+  throw Error('Clé permanente indisponible. Publication bloquée.');
 }else{
   if(process.env.GITHUB_REPOSITORY!=='Chasmet/Probl-me-r-curent-travail-'||
       process.env.GITHUB_REF!=='refs/heads/main'){
@@ -67,5 +67,5 @@ if(!hasBase64){
     'LF_SIGNING_ALIAS='+aliases[0],
     ''
   ].join('\n'));
-  process.stdout.write('Signature APK récupérée depuis GitHub Actions Secrets. Aucun service de signature externe.\n');
+  process.stdout.write('Signature APK permanente validée.\n');
 }
