@@ -141,18 +141,21 @@ final class EvidenceReader {
         XmlPullParser xml = Xml.newPullParser();
         xml.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
         xml.setInput(new ByteArrayInputStream(bytes.toByteArray()), null);
+        String parent="";
         boolean indexedCell = false, value = false;
         StringBuilder result = new StringBuilder(), cell = new StringBuilder();
         for (int event=xml.nextToken(); event!=XmlPullParser.END_DOCUMENT; event=xml.nextToken()) {
             String tag = xml.getName();
             if (event == XmlPullParser.DOCDECL) throw new IOException("Déclaration XML non prise en charge");
             if (event == XmlPullParser.START_TAG) {
+                parent=tag;
                 if ("c".equals(tag)) indexedCell="s".equals(xml.getAttributeValue(null,"t"));
                 if ("v".equals(tag)) { value=true; cell.setLength(0); }
             } else if (event == XmlPullParser.TEXT || event == XmlPullParser.CDSECT) {
                 if (value) cell.append(xml.getText());
-                else if (!xml.isWhitespace()) result.append(xml.getText());
+                else if (!xml.isWhitespace() && !"f".equals(parent)) result.append(xml.getText());
             } else if (event == XmlPullParser.END_TAG) {
+                parent="";
                 if ("si".equals(tag) && dictionary) {
                     shared.add(result.toString()); result.setLength(0);
                 } else if ("v".equals(tag)) {

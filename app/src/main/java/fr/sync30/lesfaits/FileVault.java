@@ -45,6 +45,7 @@ final class FileVault {
     }
     static long importUri(Context context,Store store,Uri uri)throws Exception{
         if(uri==null||!"content".equals(uri.getScheme()))throw new IOException("Source de fichier non autorisée");
+        if((context.getPackageName()+".evidence").equals(uri.getAuthority()))throw new IOException("Cette pièce figure déjà dans LES FAITS");
         ContentResolver resolver=context.getContentResolver();
         String name="Pièce_justificative";long announced=-1;
         try(Cursor c=resolver.query(uri,new String[]{OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE},null,null,null)){
