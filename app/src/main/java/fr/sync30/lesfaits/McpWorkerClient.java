@@ -43,6 +43,11 @@ final class McpWorkerClient {
     }
     static String appId(SecurePrefs p){return p.value("worker_id");}
     private static final String[][] ACTIONS={
+        {"lesfaits_lire_piece","Lire une pièce autorisée : fichier_id, page (dès 1). Texte/image en aperçu ; mode=original et offset pour les octets base64 par 32 Kio.","true"},
+        {"lesfaits_modifier","Modifier titre, description ou lieu : id, champ, avant (valeur complète actuelle), texte (nouvelle valeur).","false"},
+        {"lesfaits_vision","Capturer le formulaire dont l’assistance est active ; renvoie image_jpeg_base64, session et champs.","true"},
+        {"lesfaits_souris","Souris du formulaire : session avec champ, coordonnées x/y dans la capture, ou defiler (haut/bas).","false"},
+        {"lesfaits_clavier","Remplir un champ du formulaire : session, champ et texte complet.","false"},
         {"lesfaits_list","Consulter les signalements de LES FAITS","true"},
         {"lesfaits_detail","Lire un dossier et ses observations","true"},
         {"lesfaits_stats","Statistiques des problèmes récurrents","true"},
@@ -73,6 +78,8 @@ final class McpWorkerClient {
                 SecurePrefs prefs=new SecurePrefs(context);
                 prefs.protectedValue("worker_secret",secret);
                 prefs.value("worker_id",id);
+                prefs.value("worker_tools_version","2");
+                prefs.value("worker_content_enabled","false");
                 prefs.value("worker_enabled","true");
                 prefs.value("worker_write_enabled","true");
                 prefs.value("worker_files_enabled","true");
@@ -99,6 +106,8 @@ final class McpWorkerClient {
     static void disconnect(Context context,SecurePrefs prefs){
         stopJob(context);
         prefs.value("worker_id","");
+        prefs.value("worker_tools_version","");
+        prefs.value("worker_content_enabled","false");
         prefs.value("worker_enabled","false");
         prefs.value("worker_write_enabled","false");
         prefs.value("worker_files_enabled","false");
@@ -156,6 +165,44 @@ final class McpWorkerClient {
         try {
             JSONObject response=new JSONObject();response.put("ok",true);
             JSONArray data=new JSONArray();
+            SecurePrefs settings=new SecurePrefs(context);
+            if(!isEnabled(settings)) return response.put("ok",false).put("error","Partage désactivé");
+            if ("lesfaits_lire_piece".equals(action) || "lesfaits_modifier".equals(action)
+                    || "lesfaits_vision".equals(action) || "lesfaits_clavier".equals(action) || "lesfaits_souris".equals(action)) {
+                try {
+                    if(!"2".equals(settings.value("worker_tools_version"))) throw new IllegalStateException("Actualise les outils dans Réglages.");
+                    if("lesfaits_lire_piece".equals(action)){
+                        if(!"true".equals(settings.value("worker_content_enabled"))) throw new IllegalStateException("Lecture du contenu désactivée dans Réglages.");
+                        Store.Evidence file=args==null?null:store.file(args.optLong("fichier_id",-1));
+                        if(file==null) throw new IllegalArgumentException("Fichier introuvable");
+                        String mode=args.optString("mode","apercu");
+                        if("original".equals(mode)) return EvidenceReader.original(context,file,args.optLong("offset",0));
+                        if(!"apercu".equals(mode)) throw new IllegalArgumentException("Mode attendu : apercu ou original");
+                        return EvidenceReader.read(context,file,args.optInt("page",1));
+                    }
+                    if(!"lesfaits_vision".equals(action) && !"true".equals(settings.value("worker_write_enabled")))
+                        throw new IllegalStateException("Écriture désactivée");
+                    if("lesfaits_modifier".equals(action)){
+                        if(args==null) throw new IllegalArgumentException("Arguments absents");
+                        String field=args.getString("champ"), next=args.getString("texte").trim();
+                        String column;
+                        int limit;
+                        switch(field){
+                            case "titre": column="title";limit=180;break;
+                            case "description": column="description";limit=25000;break;
+                            case "lieu": column="location";limit=200;break;
+                            default: throw new IllegalArgumentException("Champ inconnu");
+                        }
+                        if(next.length()>limit || (next.isEmpty() && !"lieu".equals(field))) throw new IllegalArgumentException("Valeur invalide");
+                        long id=args.getLong("id");
+                        store.replaceField(id,column,args.getString("avant"),next,taskId);
+                        return response.put("id",id).put("champ",field);
+                    }
+                    return ReportControls.run(action,args);
+                } catch(Exception e){
+                    return response.put("ok",false).put("error",e.getMessage()==null?"Opération indisponible":e.getMessage());
+                }
+            }
             if("lesfaits_list".equals(action)){
                 String space=args==null?"TOUT":args.optString("espace","TOUT");
                 boolean recurrent=args!=null&&args.optBoolean("recurrent_uniquement",false);

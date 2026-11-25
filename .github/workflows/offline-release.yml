@@ -77,3 +77,24 @@ jobs:
             sleep 5
           done
           exit 1
+
+  upgrade:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Autoriser KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Tester la mise à jour intégrée depuis la précédente APK officielle
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          script: bash .github/scripts/verify-ota.sh

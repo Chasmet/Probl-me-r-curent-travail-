@@ -63,8 +63,18 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Signature permanente via GitHub Secrets uniquement
+      - name: Choisir le circuit de signature configuré
+        id: signing
         if: steps.version.outputs.skip != 'true'
+        env:
+          HAS_SECRET: ${{ secrets.LF_SIGNING_BUNDLE != '' || secrets.LF_SIGNING_P12_BASE64 != '' || secrets.LF_SIGNING_PASSWORD != '' || secrets.LF_SIGNING_KEY_PASSWORD != '' || secrets.LF_EXPECTED_CERT_SHA256 != '' }}
+        run: |
+          echo "configured=$HAS_SECRET" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_SECRET" != true ]; then
+            echo "Signature hors ligne active. Le manifeste signé déclenche la publication officielle." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Signature permanente via GitHub Secrets uniquement
+        if: steps.signing.outputs.configured == 'true'
         env:
           LF_SIGNING_BUNDLE: ${{ secrets.LF_SIGNING_BUNDLE }}
           LF_SIGNING_P12_BASE64: ${{ secrets.LF_SIGNING_P12_BASE64 }}
@@ -73,10 +83,10 @@ jobs:
           LF_EXPECTED_CERT_SHA256: ${{ secrets.LF_EXPECTED_CERT_SHA256 }}
         run: node .github/scripts/select-release-signer.mjs
       - name: Compiler une APK officielle avec signature stable
-        if: steps.version.outputs.skip != 'true'
+        if: steps.signing.outputs.configured == 'true'
         run: gradle :app:assembleRelease --stacktrace
       - name: Vérifier la signature et l'APK
-        if: steps.version.outputs.skip != 'true'
+        if: steps.signing.outputs.configured == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -86,7 +96,7 @@ jobs:
           sha256sum LES-FAITS-SYNC30.apk > LES-FAITS-SYNC30.apk.sha256
           cat LES-FAITS-SYNC30.apk.sha256
       - name: Contrôler la continuité du certificat avec la dernière version stable
-        if: steps.version.outputs.skip != 'true'
+        if: steps.signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -108,7 +118,7 @@ jobs:
             echo "Première version stable : la clé doit correspondre à celle des APK déjà distribuées."
           fi
       - name: Publier sur GitHub Releases (source des mises à jour)
-        if: steps.version.outputs.skip != 'true'
+        if: steps.signing.outputs.configured == 'true'
         env:
           VERSION: ${{ env.LF_VERSION }}
           GH_TOKEN: ${{ github.token }}
@@ -119,7 +129,7 @@ jobs:
             --title "LES FAITS — SYNC 30 v$VERSION" \
             --notes "Mise à jour officielle Android signée. Depuis l'application : Réglages → Mises à jour automatiques. Les signalements restent sur le téléphone lors d'une mise à jour signée par la même clé."
       - name: Vérifier que SkillMajAuto voit la version officielle
-        if: steps.version.outputs.skip != 'true'
+        if: steps.signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -132,7 +142,7 @@ jobs:
           done
           echo "::error::GitHub Latest ne présente pas encore l’APK attendue avec son SHA-256."; exit 1
       - name: Conserver une copie de l'APK publiée
-        if: steps.version.outputs.skip != 'true'
+        if: steps.signing.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: les-faits-v${{ env.LF_VERSION }}-release-apk

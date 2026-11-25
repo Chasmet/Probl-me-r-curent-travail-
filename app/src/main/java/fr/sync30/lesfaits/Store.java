@@ -60,6 +60,51 @@ public final class Store extends SQLiteOpenHelper {
         c.put("recurring",v.recurring?1:0); c.put("status",v.status); return c;
     }
     public long insert(Incident incident) { return getWritableDatabase().insertOrThrow("incidents",null,values(incident)); }
+    public long saveReport(Incident incident, Incident original, List<String> photos) {
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        try {
+            long id=incident.id;
+            if (id==0) id=insert(incident);
+            else {
+                Incident current=get(id);
+                if (current==null || original==null) throw new IllegalStateException("Rapport introuvable");
+                if (!current.title.equals(original.title) || !current.description.equals(original.description) || !current.location.equals(original.location))
+                    throw new IllegalStateException("Le contenu a changé. Rouvre le rapport avant de le modifier.");
+                ContentValues changes=values(incident);
+                changes.remove("created");
+                changes.remove("status");
+                if (db.update("incidents",changes,"id=?",new String[]{String.valueOf(id)})!=1)
+                    throw new IllegalStateException("Ce rapport a été supprimé.");
+            }
+            for(String path:photos) {
+                ContentValues photo=new ContentValues();
+                photo.put("incident_id",id); photo.put("path",path);
+                db.insertOrThrow("photos",null,photo);
+            }
+            db.setTransactionSuccessful();
+            return id;
+        } finally { db.endTransaction(); }
+    }
+
+    void replaceField(long id,String column,String before,String after,String requestId){
+        if(!java.util.Arrays.asList("title","description","location").contains(column)) throw new IllegalArgumentException("Champ inconnu");
+        if(requestId==null||!requestId.matches("[A-Za-z0-9_-]{8,100}")) throw new IllegalArgumentException("Identifiant de tâche invalide");
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        try{
+            try(Cursor c=db.rawQuery("SELECT 1 FROM mcp_requests WHERE request_id=?",new String[]{requestId})){
+                if(c.moveToFirst()){db.setTransactionSuccessful();return;}
+            }
+            ContentValues value=new ContentValues();value.put(column,after);
+            if(db.update("incidents",value,"id=? AND "+column+"=?",new String[]{String.valueOf(id),before})!=1)
+                throw new IllegalStateException("Rapport absent ou modifié. Relis le rapport.");
+            ContentValues receipt=new ContentValues();receipt.put("incident_id",id);receipt.put("request_id",requestId);
+            db.insertOrThrow("mcp_requests",null,receipt);
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
+
     /** Une tâche MCP rejouée ne doit jamais créer de doublon. */
     public long insertMcp(Incident incident,String requestId) {
         if(requestId==null||!requestId.matches("[A-Za-z0-9_-]{8,100}"))

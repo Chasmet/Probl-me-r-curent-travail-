@@ -68,13 +68,55 @@ public class MainActivity extends Activity {
     private long formTime=System.currentTimeMillis();
     private long pendingEvidenceIncident=-1L;
     private static final ExecutorService fileIo=Executors.newSingleThreadExecutor();
+    private java.util.function.Supplier<Bundle> formSnapshot;
+    private boolean atHome;
+    private CheckBox assistantSwitch;
+    private void leaveForm(Runnable destination){
+        if(formSnapshot==null){destination.run();return;}
+        new AlertDialog.Builder(this).setTitle("Quitter la saisie ?")
+            .setMessage("Les modifications depuis le dernier enregistrement seront perdues.")
+            .setNegativeButton("Continuer la saisie",null).setPositiveButton("Quitter",(d,w)->destination.run()).show();
+    }
+    @Override public void onBackPressed(){
+        if(atHome){super.onBackPressed();return;}
+        leaveForm(()->{
+            long id=formSnapshot==null?0:formSnapshot.get().getLong("id");
+            if(id>0) detail(id); else home();
+        });
+    }
+    @Override protected void onSaveInstanceState(Bundle out){
+        super.onSaveInstanceState(out);
+        if(formSnapshot!=null)out.putBundle("report_editor",formSnapshot.get());
+        out.putLong("pending_evidence",pendingEvidenceIncident);
+    }
+    private final Handler assistHandler=new Handler(Looper.getMainLooper());
+    private final Runnable serviceEditor=new Runnable(){
+        @Override public void run(){
+            if(assistantSwitch==null || !assistantSwitch.isChecked()) return;
+            McpWorkerClient.check(getApplicationContext(),null);
+            assistHandler.postDelayed(this,4500);
+        }
+    };
+    @Override protected void onPause(){
+        if(assistantSwitch!=null) assistantSwitch.setChecked(false);
+        ReportControls.leave();
+        super.onPause();
+    }
     private long lastForegroundPoll=0;
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);store=new Store(this);prefs=new SecurePrefs(this);
         getWindow().setStatusBarColor(NAVY);getWindow().setNavigationBarColor(BG);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-        home();
+        Bundle draft=b==null?null:b.getBundle("report_editor");
+        pendingEvidenceIncident=b==null?-1:b.getLong("pending_evidence",-1);
+        if(draft==null)home();
+        else{
+            long id=draft.getLong("id");
+            Store.Incident existing=id==0?null:store.get(id);
+            if(id>0 && existing==null)home();
+            else form(existing,draft);
+        }
         acceptSharedMedia(getIntent());
         acceptOAuthCallback(getIntent());
         SkillMajAuto.onNotificationTap(this,getIntent());
@@ -160,7 +202,7 @@ public class MainActivity extends Activity {
     private TextView button(String title,int color,Runnable task){
         TextView b=text(title,15,Color.WHITE,true);b.setGravity(Gravity.CENTER);
         b.setPadding(dp(15),dp(13),dp(15),dp(13));
-        b.setBackground(shape(color,13));b.setOnClickListener(v->task.run());
+        b.setFocusable(true);b.setMinHeight(dp(48));b.setBackground(shape(color,13));b.setOnClickListener(v->task.run());
         return b;
     }
     private void addButton(LinearLayout parent,String title,int color,Runnable task){
@@ -176,6 +218,11 @@ public class MainActivity extends Activity {
         parent.addView(b,p);
     }
     private void base(String screen,String selectedTab){
+        atHome="Mes signalements".equals(screen);
+        formSnapshot=null;
+        ReportControls.leave();
+        if(assistantSwitch!=null) assistantSwitch.setChecked(false);
+        assistantSwitch=null;
         root=vertical();root.setBackgroundColor(BG);
         root.setOnApplyWindowInsetsListener((view,insets)->{
             root.setPadding(0,insets.getSystemWindowInsetTop(),0,insets.getSystemWindowInsetBottom());
@@ -191,7 +238,8 @@ public class MainActivity extends Activity {
         brand.addView(title);brand.addView(sign);
         row.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
         TextView settings=text("⚙",29,Color.WHITE,false);settings.setGravity(Gravity.CENTER);
-        settings.setPadding(dp(14),dp(3),dp(5),dp(3));settings.setOnClickListener(v->settings());
+        settings.setPadding(dp(14),dp(3),dp(5),dp(3));settings.setOnClickListener(v->leaveForm(this::settings));
+        settings.setContentDescription("Réglages");settings.setFocusable(true);settings.setMinWidth(dp(48));settings.setMinHeight(dp(48));
         row.addView(settings);top.addView(row);
         if(!screen.isEmpty()){
             TextView sub=text(screen,13,0xFFEAF4FF,false);
@@ -218,7 +266,8 @@ public class MainActivity extends Activity {
         wrapper.addView(symbol);wrapper.addView(label);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);
         p.leftMargin=dp(3);p.rightMargin=dp(3);nav.addView(wrapper,p);
-        wrapper.setOnClickListener(v->action.run());
+        wrapper.setFocusable(true);wrapper.setContentDescription(title);wrapper.setSelected(active);
+        wrapper.setOnClickListener(v->leaveForm(action));
     }
     private void actionCard(LinearLayout parent,String title,String subtitle,String icon,int accent,Runnable action){
         LinearLayout c=card(parent);LinearLayout line=horizontal();
@@ -229,12 +278,12 @@ public class MainActivity extends Activity {
         TextView t=text(title,16,INK,true);TextView st=text(subtitle,12,MUTED,false);
         desc.addView(t);desc.addView(st);
         LinearLayout.LayoutParams d=new LinearLayout.LayoutParams(0,-2,1);d.leftMargin=dp(12);line.addView(desc,d);
-        line.addView(text("›",27,MUTED,false));c.addView(line);c.setOnClickListener(v->action.run());
+        line.addView(text("›",27,MUTED,false));c.addView(line);c.setFocusable(true);c.setOnClickListener(v->action.run());
     }
     private void statRow(LinearLayout parent,int total,int active,int resolved,int recurring){
         LinearLayout row=horizontal();
         stat(row,String.valueOf(total),"Total",BLUE);
-        stat(row,String.valueOf(active),"En cours",0xFFDD7F14);
+        stat(row,String.valueOf(active),"Ouverts",0xFFDD7F14);
         stat(row,String.valueOf(resolved),"Résolus",GREEN);
         stat(row,String.valueOf(recurring),"Récurrents",0xFF9A4AD8);
         parent.addView(row);
@@ -248,8 +297,9 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.leftMargin=dp(2);p.rightMargin=dp(2);row.addView(c,p);
     }
     private void home(){
-        base("Tout consigner, dater, prouver.","home");
+        base("Mes signalements","home");
         actionCard(body,"Nouveau signalement","Décrire un fait et joindre des preuves","＋",BLUE,this::form);
+        actionCard(body,"Reprendre un rapport","Consulter et modifier les dossiers ouverts","✎",BLUE,()->history("OUVERT"));
         actionCard(body,"Mises à jour","Rechercher la dernière version de LES FAITS","⟳",GREEN,()->SkillMajAuto.check(this,true));
         actionCard(body,"Mes fichiers et preuves","Photos, vidéos, PDF et documents liés aux dossiers","▧",BLUE,this::fileManager);
         heading(body,"Mes espaces");
@@ -270,6 +320,7 @@ public class MainActivity extends Activity {
             empty.addView(text("Appuie sur « Nouveau signalement » pour commencer.",12,MUTED,false));
         }else for(int i=0;i<Math.min(5,all.size());i++) incidentCard(body,all.get(i));
     }
+    private static String searchKey(String input){return java.text.Normalizer.normalize(input.trim(),java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+","").toLowerCase(Locale.FRANCE);}
     private String labelDate(long time){return datetime.format(new Date(time));}
     private void incidentCard(LinearLayout parent,Store.Incident i){
         LinearLayout c=card(parent);
@@ -282,7 +333,7 @@ public class MainActivity extends Activity {
         c.addView(text(i.status+(i.recurring?"  •  Récurrent":""),12,color,true));
         int attachments=store.filesForIncident(i.id).size();
         if(attachments>0)c.addView(text(attachments+" pièce(s) jointe(s)",11,MUTED,false));
-        c.setOnClickListener(v->detail(i.id));
+        c.setFocusable(true);c.setOnClickListener(v->detail(i.id));
     }
     private void history(){history("TOUT");}
     private void history(String initial){
@@ -291,18 +342,20 @@ public class MainActivity extends Activity {
         Spinner spinner=spinner(body,"Afficher",filters);
         if("TERRAIN".equals(initial))spinner.setSelection(1);
         if("PERSONNEL".equals(initial))spinner.setSelection(2);
+        if("OUVERT".equals(initial))spinner.setSelection(4);
         EditText query=edit(body,"Rechercher","Titre, description, lieu, catégorie",false);
+        List<Store.Incident> incidents=store.all();
         LinearLayout items=vertical();body.addView(items);
         Runnable refresh=()->{
             items.removeAllViews();
-            String q=query.getText().toString().toLowerCase(Locale.FRANCE);
+            String q=searchKey(query.getText().toString());
             int choice=spinner.getSelectedItemPosition(),count=0;
-            for(Store.Incident i:store.all()){
+            for(Store.Incident i:incidents){
                 if(choice==1&&!"TERRAIN".equals(i.space))continue;
                 if(choice==2&&!"PERSONNEL".equals(i.space))continue;
                 if(choice==3&&!i.recurring)continue;
                 if(choice==4&&("Résolu".equals(i.status)||"Classé".equals(i.status)))continue;
-                String hay=(i.title+" "+i.description+" "+i.location+" "+i.category).toLowerCase(Locale.FRANCE);
+                String hay=searchKey(i.title+" "+i.description+" "+i.location+" "+i.category+" "+i.status);
                 if(!hay.contains(q))continue;
                 incidentCard(items,i);count++;
             }
@@ -323,7 +376,7 @@ public class MainActivity extends Activity {
     private EditText edit(LinearLayout parent,String name,String hint,boolean multiline){
         TextView l=text(name,13,INK,true);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
         lp.topMargin=dp(8);lp.bottomMargin=dp(5);parent.addView(l,lp);
-        EditText field=new EditText(this);field.setTextColor(INK);field.setTextSize(14);field.setHint(hint);
+        EditText field=new EditText(this);field.setId(View.generateViewId());l.setLabelFor(field.getId());field.setTextColor(INK);field.setTextSize(14);field.setHint(hint);
         field.setHintTextColor(0xFF8B9AAF);
         field.setBackground(border(Color.WHITE,12,0xFFD5E0ED));
         field.setPadding(dp(12),dp(10),dp(12),dp(10));
@@ -336,7 +389,7 @@ public class MainActivity extends Activity {
         TextView label=text(title,13,INK,true);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(8);p.bottomMargin=dp(5);
         parent.addView(label,p);
-        Spinner s=new Spinner(this);
+        Spinner s=new Spinner(this);s.setId(View.generateViewId());label.setLabelFor(s.getId());
         ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_item,options);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         s.setAdapter(adapter);s.setPadding(dp(10),dp(8),dp(4),dp(8));
@@ -365,7 +418,7 @@ public class MainActivity extends Activity {
             String query=search.getText().toString().trim().toLowerCase(Locale.FRANCE);
             String type=(String)filter.getSelectedItem();
             int visible=0;
-            for(Store.Evidence item:store.files()){
+            for(Store.Evidence item:all){
                 String kind=FileVault.kind(item.mime);
                 if(!"Tous".equals(type)&&
                     !("Photos".equals(type)&&"Photo".equals(kind))&&
@@ -404,7 +457,7 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams m=new LinearLayout.LayoutParams(0,-2,1);m.leftMargin=dp(12);
                 head.addView(meta,m);card.addView(head);
                 LinearLayout controls=horizontal();
-                compactButton(controls,"Ouvrir",NAVY,()->openEvidence(item));
+                compactButton(controls,"Aperçu",NAVY,()->preview(item,1));
                 compactButton(controls,"Lier aux rapports",BLUE,()->chooseReportsForFile(item.id));
                 card.addView(controls);
                 if(item.linkedCount==0)addButton(card,"Supprimer de la bibliothèque",0xFF9D4D53,()->
@@ -479,13 +532,6 @@ public class MainActivity extends Activity {
         Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
-        intent.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{
-            "image/*","video/*","audio/*","application/pdf","text/plain","text/csv",
-            "application/msword","application/vnd.ms-excel","application/vnd.ms-powerpoint",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation","application/rtf"
-        });
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try{startActivityForResult(intent,PICK_EVIDENCE);}
@@ -518,6 +564,40 @@ public class MainActivity extends Activity {
                 toast(done+" fichier(s) importé(s)"+(lastError==null?".":" · "+lastError));
                 if(target>0&&store.get(target)!=null)detail(target);
                 else fileManager();
+            });
+        });
+    }
+    private void preview(Store.Evidence file,int page){
+        final View origin=root;
+        fileIo.execute(()->{
+            org.json.JSONObject extracted;
+            try{extracted=EvidenceReader.read(this,file,page);}
+            catch(Exception e){extracted=new org.json.JSONObject();try{extracted.put("info","Aperçu indisponible. Ce fichier peut être ouvert avec un lecteur compatible.");}catch(Exception ignored){}}
+            final org.json.JSONObject data=extracted;
+            runOnUiThread(()->{
+                if(isFinishing()||isDestroyed()||root!=origin)return;
+                ScrollView scroll=new ScrollView(this);LinearLayout content=vertical();
+                content.setPadding(dp(18),dp(10),dp(18),dp(10));scroll.addView(content);
+                if(data.has("image_jpeg_base64")){
+                    byte[] bytes=android.util.Base64.decode(data.optString("image_jpeg_base64"),android.util.Base64.DEFAULT);
+                    ImageView image=new ImageView(this);image.setAdjustViewBounds(true);
+                    image.setImageBitmap(BitmapFactory.decodeByteArray(bytes,0,bytes.length));content.addView(image);
+                }
+                String excerpt=data.optString("texte");
+                if(!excerpt.isEmpty()){
+                    TextView copy=text(excerpt,15,INK,false);copy.setTextIsSelectable(true);content.addView(copy);
+                }
+                if(data.optBoolean("extrait_limite")) content.addView(text("Extrait limité à 12 000 caractères.",12,MUTED,false));
+                if(data.has("info")) content.addView(text(data.optString("info"),14,MUTED,false));
+                int pages=data.optInt("pages",1);
+                AlertDialog dialog=new AlertDialog.Builder(this).setTitle(file.name).setView(scroll)
+                    .setPositiveButton("Fermer",null).setNeutralButton("Ouvrir avec…",(d,w)->openEvidence(file)).create();
+                if(pages>1){
+                    content.addView(text("Page "+page+" sur "+pages,13,BLUE,true));
+                    if(page>1)addButton(content,"Précédente",NAVY,()->{dialog.dismiss();preview(file,page-1);});
+                    if(page<pages)addButton(content,"Suivante",BLUE,()->{dialog.dismiss();preview(file,page+1);});
+                }
+                dialog.show();
             });
         });
     }
@@ -578,12 +658,18 @@ public class MainActivity extends Activity {
             }).show();
     }
     private void form(){
-        newPhotos.clear();formTime=System.currentTimeMillis();
-        base("Nouveau signalement","home");
+        form(null);
+    }
+    private void form(Store.Incident existing){form(existing,null);}
+    private void form(Store.Incident existing,Bundle draft){
+        newPhotos.clear();formTime=existing==null?System.currentTimeMillis():existing.occurred;
+        base(existing==null?"Nouveau signalement":"Modifier le rapport n° "+existing.id,existing==null?"home":"list");
         LinearLayout c=card(body);
         c.addView(text("1 / Informations sur le fait",17,BLUE,true));
         Spinner section=spinner(c,"Espace concerné",SPACES);
-        Spinner category=spinner(c,"Catégorie",CATEGORIES);
+        List<String> categories=new ArrayList<>(java.util.Arrays.asList(CATEGORIES));
+        if(existing!=null && !categories.contains(existing.category)) categories.add(existing.category);
+        Spinner category=spinner(c,"Catégorie",categories.toArray(new String[0]));
         EditText title=edit(c,"Titre du problème *","Ex. Panne de la balayeuse",false);
         EditText description=edit(c,"Description factuelle *","Que s'est-il passé ? Conséquences, actions réalisées…",true);
         dictationTarget=description;
@@ -611,8 +697,50 @@ public class MainActivity extends Activity {
         Spinner urgency=spinner(c,"Niveau d'urgence",SEVERITIES);
         CheckBox recurring=new CheckBox(this);recurring.setText("C'est un problème récurrent");recurring.setTextColor(INK);
         c.addView(recurring);
+        if(existing!=null){
+            section.setSelection("PERSONNEL".equals(existing.space)?1:0);
+            category.setSelection(categories.indexOf(existing.category));
+            urgency.setSelection(Math.max(0,java.util.Arrays.asList(SEVERITIES).indexOf(existing.severity)));
+            title.setText(existing.title);description.setText(existing.description);location.setText(existing.location);
+            recurring.setChecked(existing.recurring);
+        }
+        if(draft!=null){
+            section.setSelection(draft.getInt("space"));category.setSelection(draft.getInt("category"));
+            urgency.setSelection(draft.getInt("severity"));recurring.setChecked(draft.getBoolean("recurring"));
+            title.setText(draft.getString("title"));description.setText(draft.getString("description"));location.setText(draft.getString("location"));
+            formTime=draft.getLong("date");dateLabel.setText("Date et heure du fait : "+labelDate(formTime));
+            newPhotos.addAll(draft.getStringArrayList("photos"));
+            if(existing!=null){
+                existing.title=draft.getString("before_title");existing.description=draft.getString("before_description");
+                existing.location=draft.getString("before_location");
+            }
+        }
+        formSnapshot=()->{
+            Bundle state=new Bundle();
+            state.putLong("id",existing==null?0:existing.id);
+            if(existing!=null){
+                state.putString("before_title",existing.title);state.putString("before_description",existing.description);
+                state.putString("before_location",existing.location);
+            }
+            state.putInt("space",section.getSelectedItemPosition());state.putInt("category",category.getSelectedItemPosition());
+            state.putInt("severity",urgency.getSelectedItemPosition());state.putBoolean("recurring",recurring.isChecked());
+            state.putString("title",title.getText().toString());state.putString("description",description.getText().toString());
+            state.putString("location",location.getText().toString());state.putLong("date",formTime);
+            state.putStringArrayList("photos",new ArrayList<>(newPhotos));return state;
+        };
+        if(McpWorkerClient.isEnabled(prefs) && "2".equals(prefs.value("worker_tools_version"))){
+            ReportControls controls=new ReportControls(root,existing==null?0:existing.id,title,description,location);
+            assistantSwitch=new CheckBox(this);
+            assistantSwitch.setText("Assistance MCP sur ce formulaire · capture, clic et saisie");
+            assistantSwitch.setOnCheckedChangeListener((v,enabled)->{
+                controls.enable(enabled);
+                assistHandler.removeCallbacks(serviceEditor);
+                if(enabled) assistHandler.post(serviceEditor);
+            });
+            c.addView(assistantSwitch);
+        }
         gap(c,10);c.addView(text("2 / Photos et pièces justificatives",17,BLUE,true));
-        photoCounter=text("Aucune photo ajoutée",12,MUTED,false);c.addView(photoCounter);
+        photoCounter=text(newPhotos.isEmpty()?"Aucune photo ajoutée":newPhotos.size()+" photo(s) sélectionnée(s)",12,MUTED,false);c.addView(photoCounter);
         addButton(c,"＋ Ajouter des photos",BLUE,()->{
             Intent pick=new Intent(Intent.ACTION_GET_CONTENT);pick.setType("image/*");
             pick.addCategory(Intent.CATEGORY_OPENABLE);
@@ -626,18 +754,19 @@ public class MainActivity extends Activity {
         });
         c.addView(text("Les images restent dans la mémoire privée de l'application. La photo prise directement est une vignette.",11,MUTED,false));
         gap(c,15);
-        addButton(c,"✓ Enregistrer le signalement",GREEN,()->{
+        addButton(c,existing==null?"Enregistrer le signalement":"Enregistrer les modifications",GREEN,()->{
             String t=title.getText().toString().trim(),desc=description.getText().toString().trim();
-            if(t.isEmpty()||desc.isEmpty()){toast("Renseigne un titre et une description.");return;}
+            if(t.isEmpty()){title.setError("Ajoute un titre");title.requestFocus();return;}
+            if(desc.isEmpty()){description.setError("Décris le fait");description.requestFocus();return;}
             Store.Incident i=new Store.Incident();
             i.space=section.getSelectedItemPosition()==0?"TERRAIN":"PERSONNEL";
             i.category=(String)category.getSelectedItem();i.title=t;i.description=desc;
             i.location=location.getText().toString().trim();i.occurred=formTime;
             i.severity=(String)urgency.getSelectedItem();i.recurring=recurring.isChecked();
             try{
-                long id=store.insert(i);
-                for(String path:newPhotos)store.addPhoto(id,path);
-                newPhotos.clear();toast("Signalement enregistré hors connexion.");detail(id);
+                if(existing!=null) i.id=existing.id;
+                long id=store.saveReport(i,existing,newPhotos);
+                newPhotos.clear();toast(existing==null?"Signalement enregistré.":"Rapport modifié.");detail(id);
             }catch(Exception e){toast("Impossible d'enregistrer : "+e.getMessage());}
         });
     }
@@ -647,6 +776,8 @@ public class MainActivity extends Activity {
         base("Détail du signalement n° "+id,"list");
         LinearLayout c=card(body);
         c.addView(text(item.title,22,INK,true));gap(c,7);
+        c.addView(text(item.status,14,BLUE,true));
+        addButton(c,"Modifier le rapport",BLUE,()->form(item));
         c.addView(text("Date du fait : "+labelDate(item.occurred),13,MUTED,false));
         c.addView(text("Espace : "+("TERRAIN".equals(item.space)?SPACES[0]:SPACES[1]),13,MUTED,false));
         c.addView(text("Catégorie : "+item.category,13,MUTED,false));
@@ -679,7 +810,7 @@ public class MainActivity extends Activity {
             LinearLayout row=card(body);
             row.addView(text(file.name,15,INK,true));
             row.addView(text(FileVault.kind(file.mime)+" · "+FileVault.sizeLabel(file.size),12,MUTED,false));
-            addButton(row,"Ouvrir cette pièce",BLUE,()->openEvidence(file));
+            addButton(row,"Consulter cette pièce",BLUE,()->preview(file,1));
             addButton(row,"Détacher de ce rapport",NAVY,()->
                 new AlertDialog.Builder(this).setTitle("Retirer le lien ?")
                     .setMessage("Le fichier restera dans la bibliothèque et les autres rapports.")
@@ -763,8 +894,8 @@ public class MainActivity extends Activity {
             addButton(c,"Associer LES FAITS au serveur",BLUE,()->{
                 String code=invite.getText().toString().trim();
                 new AlertDialog.Builder(this)
-                    .setTitle("Autoriser la lecture et la création de dossiers ?")
-                    .setMessage("Ce serveur pourra consulter et ajouter des dossiers depuis ChatGPT avec approbation. Les photos restent sur le téléphone. Le partage peut être désactivé.")
+                    .setTitle("Autoriser la consultation et la modification des dossiers ?")
+                    .setMessage("Ce serveur pourra consulter, créer et corriger les dossiers depuis ChatGPT avec les autorisations du serveur. Les photos restent sur le téléphone. Le partage peut être désactivé.")
                     .setNegativeButton("Annuler",null)
                     .setPositiveButton("Autoriser",(d,w)->McpWorkerClient.pair(getApplicationContext(),code,(ok,message)->
                         new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
@@ -780,12 +911,17 @@ public class MainActivity extends Activity {
                 toast(checked?"Connexion MCP autorisée":"Connexion MCP désactivée");
             });
             c.addView(share);
-            if(!"true".equals(prefs.value("worker_write_enabled"))||!"true".equals(prefs.value("worker_files_enabled"))){
-                c.addView(text("Pour que ChatGPT puisse associer les fichiers aux rapports, crée une invitation MCP et réassocie LES FAITS. Les dossiers et fichiers existants sont conservés.",12,MUTED,false));
+            CheckBox contentAccess=new CheckBox(this);
+            contentAccess.setText("Autoriser le MCP à lire le contenu des pièces importées (texte, aperçus et fichiers originaux)");
+            contentAccess.setChecked("true".equals(prefs.value("worker_content_enabled")));
+            contentAccess.setOnCheckedChangeListener((v,checked)->prefs.value("worker_content_enabled",String.valueOf(checked)));
+            c.addView(contentAccess);
+            if(!"2".equals(prefs.value("worker_tools_version"))){
+                c.addView(text("Pour ajouter la lecture des pièces et l’assistance au formulaire à une ancienne association, utilise une nouvelle invitation du même serveur.",12,MUTED,false));
                 EditText renewal=edit(c,"Nouvelle invitation MCP","Coller le code de réassociation",false);
-                addButton(c,"Activer la gestion des fichiers ChatGPT",BLUE,()->new AlertDialog.Builder(this)
+                addButton(c,"Actualiser les outils du connecteur",BLUE,()->new AlertDialog.Builder(this)
                     .setTitle("Autoriser les fichiers et rapports depuis ChatGPT ?")
-                    .setMessage("La réassociation ajoute la consultation des fichiers et leur liaison aux rapports depuis ChatGPT. Les écritures restent soumises aux approbations du serveur CHK Universal.")
+                    .setMessage("La réassociation ajoute la correction des dossiers, la lecture optionnelle des pièces et l’assistance sur le formulaire ouvert. Les écritures restent soumises aux approbations du serveur CHK Universal.")
                     .setNegativeButton("Annuler",null)
                     .setPositiveButton("Réassocier",(d,w)->McpWorkerClient.pair(getApplicationContext(),renewal.getText().toString().trim(),(ok,message)->
                         new AlertDialog.Builder(this).setTitle(ok?"Association réussie":"Association impossible")
@@ -809,13 +945,14 @@ public class MainActivity extends Activity {
         }
         LinearLayout info=card(body);
         info.addView(text("Consultation et création depuis ChatGPT",17,BLUE,true));gap(info,7);
-        info.addView(text("Lorsque le partage est actif, LES FAITS peut lister les faits, consulter ou créer un signalement et associer une pièce déjà importée à un rapport après réassociation et autorisation. Seules les métadonnées des fichiers sont transmises, jamais les vidéos ou photos elles-mêmes. La vérification a lieu à l’ouverture, puis périodiquement selon Android.",13,INK,false));
-        gap(info,8);
-        info.addView(text("Les médias restent sur le téléphone. ChatGPT peut consulter les noms et identifiants des fichiers puis demander de les associer aux rapports ; les octets des vidéos et photos ne sont pas transmis.",12,MUTED,false));
+        info.addView(text("Le connecteur peut consulter les dossiers et lier leurs pièces. Active la lecture du contenu pour partager sur demande un extrait, une page ou le fichier original. Dans un formulaire, l’assistance permet de voir l’écran et de remplir le titre, le lieu ou le constat. Tu peux relire puis enregistrer les modifications.",13,INK,false));
         LinearLayout updateCard=card(body);
-        updateCard.addView(text("SkillMajAuto · Mises à jour",18,BLUE,true));
+        updateCard.addView(text("Mise à jour automatique",18,BLUE,true));
         gap(updateCard,6);
-        updateCard.addView(text("SkillMajAuto vérifie les versions stables GitHub à l'ouverture et au retour dans l'application (au plus toutes les 15 minutes), puis environ toutes les 12 heures en arrière-plan. Une notification et une fenêtre dans LES FAITS proposent la mise à jour. Android demande ton accord avant installation.",12,INK,false));
+        updateCard.addView(text("Version installée "+SkillMajAuto.versionName(this),14,INK,true));
+        long lastCheck=SkillMajAuto.lastCheck(this);
+        updateCard.addView(text(lastCheck>0?"Dernière vérification le "+labelDate(lastCheck):"Première vérification en attente",12,MUTED,false));
+        updateCard.addView(text("LES FAITS vérifie les versions stables GitHub à l'ouverture et au retour dans l'application (au plus toutes les 15 minutes), puis environ toutes les 12 heures en arrière-plan. Une notification et une fenêtre dans LES FAITS proposent la mise à jour. Android demande ton accord avant installation.",12,INK,false));
         CheckBox automatic=new CheckBox(this);automatic.setText("Vérifier automatiquement les mises à jour");
         automatic.setTextColor(INK);automatic.setChecked(SkillMajAuto.autoEnabled(this));
         automatic.setOnCheckedChangeListener((b,checked)->SkillMajAuto.setAuto(this,checked));
@@ -824,7 +961,7 @@ public class MainActivity extends Activity {
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
             addButton(updateCard,"Activer les notifications de mises à jour",NAVY,()->
                 requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},5401));
-        addButton(updateCard,"SkillMajAuto · Vérifier les mises à jour",BLUE,()->SkillMajAuto.check(this,true));
+        addButton(updateCard,"Vérifier les mises à jour",BLUE,()->SkillMajAuto.check(this,true));
         updateCard.addView(text("Une APK officielle et sa signature sont vérifiées avant de proposer l'installation, avec ton accord Android.",11,MUTED,false));
         LinearLayout backup=card(body);
         backup.addView(text("Restauration de l’ancienne version",18,BLUE,true));
