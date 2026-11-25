@@ -25,7 +25,7 @@ Le workflow `.github/workflows/release.yml` reconnaît le secret unique `LF_SIGN
 - `LF_SIGNING_KEY_PASSWORD` : optionnel si identique au mot de passe du magasin.
 - `LF_EXPECTED_CERT_SHA256` : recommandé, empreinte SHA-256 publique du certificat attendu.
 
-L'APK sera publiée uniquement après une signature vérifiée. Ne jamais publier la clé, son base64 ou son mot de passe dans un dépôt public, un ticket, un chat ou des logs. Aucun circuit OIDC ou serveur externe : les secrets GitHub sont obligatoires.
+L'APK sera publiée uniquement après une signature vérifiée. Ne jamais publier la clé, son base64 ou son mot de passe dans un dépôt public, un ticket, un chat ou des logs. Aucun circuit OIDC ou serveur externe. La publication automatique nécessite le secret GitHub existant. L’alternative hors ligne utilise le build exact et un manifeste public de signature produit avec la même clé privée ; voir .github/workflows/offline-release.yml.
 
 ## Limites techniques
 
@@ -37,3 +37,7 @@ L'APK sera publiée uniquement après une signature vérifiée. Ne jamais publie
 ## Vérifications
 
 Workflow `Build Android` sur GitHub Actions : compilation et tests. Workflow `Publier APK signé — LES FAITS` : signature PKCS12, `apksigner verify`, SHA-256, publication de l'APK dans GitHub Releases.
+
+## Continuité v0.9.0 → v0.10.0
+
+Le certificat historique est verrouillé : SHA-256 44d5eaf22860c8b45ec947940b2b2cc12a8a68f83a45089f1e6adf59422ddf04. Sans secret utilisable, le workflow de signature automatique échoue explicitement (il ne simule plus une publication réussie). Le workflow Build Android continue à produire un artifact non signé, qui n’est jamais une mise à jour officielle. Le circuit hors ligne doit recevoir un nouveau manifeste signé correspondant exactement au build de la version à publier. Ne jamais réutiliser le bloc de signature d’une ancienne APK.

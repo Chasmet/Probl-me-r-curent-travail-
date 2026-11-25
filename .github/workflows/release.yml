@@ -71,7 +71,9 @@ jobs:
         run: |
           echo "configured=$HAS_SECRET" >> "$GITHUB_OUTPUT"
           if [ "$HAS_SECRET" != true ]; then
-            echo "Signature hors ligne active. Le manifeste signé déclenche la publication officielle." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Aucune clé permanente disponible dans GitHub Actions. Le build non signé reste accessible dans Build Android. Le manifeste de signature hors ligne doit être actualisé pour cette version."
+            echo "Publication non effectuée : signer le build exact avec la clé existante ou configurer le secret permanent." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
       - name: Signature permanente via GitHub Secrets uniquement
         if: steps.signing.outputs.configured == 'true'
@@ -91,7 +93,12 @@ jobs:
         run: |
           set -euo pipefail
           cp app/build/outputs/apk/release/app-release.apk LES-FAITS-SYNC30.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose LES-FAITS-SYNC30.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs LES-FAITS-SYNC30.apk > "$RUNNER_TEMP/lesfaits-cert.txt"
+          grep -Fx "Signer #1 certificate SHA-256 digest: 44d5eaf22860c8b45ec947940b2b2cc12a8a68f83a45089f1e6adf59422ddf04" "$RUNNER_TEMP/lesfaits-cert.txt"
+          test "$(grep -c 'certificate SHA-256 digest:' "$RUNNER_TEMP/lesfaits-cert.txt")" -eq 1
+          code="$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9]*\).*/\1/p' app/build.gradle | head -n1)"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging LES-FAITS-SYNC30.apk > "$RUNNER_TEMP/lesfaits-badging.txt"
+          grep -F "package: name='fr.sync30.lesfaits' versionCode='$code' versionName='$LF_VERSION'" "$RUNNER_TEMP/lesfaits-badging.txt"
           test "$(stat -c%s LES-FAITS-SYNC30.apk)" -gt 10000
           sha256sum LES-FAITS-SYNC30.apk > LES-FAITS-SYNC30.apk.sha256
           cat LES-FAITS-SYNC30.apk.sha256

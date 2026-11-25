@@ -150,8 +150,16 @@ final class McpWorkerClient {
                         capabilities.put(new JSONObject().put("name",item[0]).put("description",item[1]).put("readOnly",Boolean.parseBoolean(item[2])));
                     }
                     catalog.put("capabilities",capabilities);
-                    call("PUT","/api/agent/"+id+"/capabilities",secret,catalog);
-                    prefs.value("worker_tools_version","3");
+                    try{
+                        call("PUT","/api/agent/"+id+"/capabilities",secret,catalog);
+                        prefs.value("worker_tools_version","3");
+                    }catch(Exception e){
+                        // Older server versions may lack the capability update endpoint.
+                        // Preserve polling with the already registered catalogue, without
+                        // marking the new capabilities as registered.
+                        if(!"HTTP 404".equals(e.getMessage()) && !"HTTP 405".equals(e.getMessage()))throw e;
+                        Log.w(TAG,"Actualisation du catalogue indisponible ; ancien catalogue conservé.");
+                    }
                 }
                 int processed=0;
                 for(int n=0;n<8;n++){
