@@ -103,3 +103,10 @@ Un média peut être associé à **plusieurs rapports**, depuis la bibliothèque
 Le PDF inclut un inventaire des fichiers liés et des aperçus d'images (les vidéos et documents restent dans l'app et ne sont pas incorporés). Les noms, types et identifiants des fichiers peuvent être consultés par ChatGPT via `lesfaits_files` ; `lesfaits_attach` et `lesfaits_detach` permettent d'associer/détacher les fichiers **déjà importés** avec l'approbation du serveur CHK Universal. Aucune pièce binaire n'est envoyée à ChatGPT et ChatGPT ne peut pas lire la vidéo/les images par ces seules commandes.
 
 Après installation, les appareils déjà associés doivent créer une nouvelle invitation MCP et cliquer **Activer la gestion des fichiers ChatGPT** dans Réglages pour exposer les nouvelles capacités (la base locale est conservée). Les commandes en attente sont recherchées au retour au premier plan de l'application, ainsi que par les contrôles périodiques Android. La publication officielle via SkillMajAuto reste conditionnée à une GitHub Release signée avec une clé permanente.
+
+## v0.10.0 — fusion et archives réversibles
+
+- Depuis le détail d’un rapport actif, « Fusionner avec un autre rapport » sélectionne un rapport du même espace et demande confirmation. Les descriptions, observations et preuves sont conservées ; le rapport source rejoint les archives. Restaurer la source ne défait pas la fusion.
+- Historique → Archives / corbeille permet de consulter et restaurer les dossiers. Migration SQLite 3 → 4 non destructive.
+- ChatGPT : lesfaits_merge, lesfaits_archive, lesfaits_restore et lesfaits_archives. Actualisation du catalogue sans réassociation si le serveur prend en charge l’endpoint ; sur un ancien serveur, les commandes déjà associées restent utilisables.
+- Publication : la clé permanente est indispensable. Une absence de secret produit désormais un échec explicite du workflow de signature automatique ; le workflow de signature hors ligne reste disponible pour le build exact et vérifie le certificat historique. Ne pas désinstaller l’application existante.

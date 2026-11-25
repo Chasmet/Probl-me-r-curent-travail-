@@ -845,12 +845,47 @@ public class MainActivity extends Activity {
         boolean archived=false;
         for(Store.Incident a:store.archived())if(a.id==id){archived=true;break;}
         final boolean inArchive=archived;
+        if(!inArchive) addButton(body,"Fusionner avec un autre rapport",NAVY,()->chooseMergeSource(item));
         addButton(body,inArchive?"Restaurer ce dossier":"Archiver ce dossier (réversible)",inArchive?GREEN:0xFFB13E42,()->{
             try{
                 store.archiveMcp(id,item.title,"Action dans l'application",inArchive,java.util.UUID.randomUUID().toString());
                 history(inArchive?"TOUT":"ARCHIVES");
             }catch(Exception e){toast("Impossible : "+e.getMessage());}
         });
+    }
+    private void chooseMergeSource(Store.Incident target){
+        List<Store.Incident> candidates=new ArrayList<>();
+        for(Store.Incident candidate:store.all()){
+            if(candidate.id!=target.id && target.space.equals(candidate.space))candidates.add(candidate);
+        }
+        if(candidates.isEmpty()){toast("Aucun autre rapport actif dans cet espace.");return;}
+        String[] labels=new String[candidates.size()];
+        for(int i=0;i<candidates.size();i++){
+            Store.Incident source=candidates.get(i);
+            labels[i]="#"+source.id+" · "+labelDate(source.occurred)+" · "+source.title;
+        }
+        new AlertDialog.Builder(this).setTitle("Choisir le rapport à fusionner")
+            .setItems(labels,(dialog,which)->confirmMerge(target,candidates.get(which)))
+            .setNegativeButton("Annuler",null).show();
+    }
+    private void confirmMerge(Store.Incident target,Store.Incident source){
+        EditText title=new EditText(this);
+        title.setSingleLine(true);
+        title.setText(target.title);
+        title.setHint("Titre du rapport consolidé");
+        AlertDialog dialog=new AlertDialog.Builder(this)
+            .setTitle("Confirmer la fusion")
+            .setMessage("Le rapport n°"+target.id+" recevra les deux descriptions, observations et preuves. Le rapport n°"+source.id+" sera archivé, pas supprimé. Restaurer la source ne défait pas la fusion. Le lieu, la catégorie et le suivi du rapport cible sont conservés.")
+            .setView(title).setNegativeButton("Annuler",null).setPositiveButton("Fusionner",null).create();
+        dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            String name=title.getText().toString().trim();
+            if(name.length()<3||name.length()>180){title.setError("Entre 3 et 180 caractères");return;}
+            try{
+                store.mergeMcp(target.id,source.id,target.description,source.description,name,java.util.UUID.randomUUID().toString());
+                dialog.dismiss();toast("Rapports fusionnés. Source conservée dans les archives.");detail(target.id);
+            }catch(Exception e){title.setError("Fusion impossible : "+e.getMessage());}
+        }));
+        dialog.show();
     }
     private void reports(){
         base("Rapports / Affaires personnelles","report");
