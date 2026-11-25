@@ -48,6 +48,10 @@ final class McpWorkerClient {
         {"lesfaits_vision","Capturer le formulaire dont l’assistance est active ; renvoie image_jpeg_base64, session et champs.","true"},
         {"lesfaits_souris","Souris du formulaire : session avec champ, coordonnées x/y dans la capture, ou defiler (haut/bas).","false"},
         {"lesfaits_clavier","Remplir un champ du formulaire : session, champ et texte complet.","false"},
+        {"lesfaits_merge","Fusionner deux rapports actifs : cible_id, source_id, avant_cible, avant_source, titre. Source archivée et preuves conservées.","false"},
+        {"lesfaits_archive","Retirer un rapport de la liste active sans supprimer les preuves : id, titre_avant, motif.","false"},
+        {"lesfaits_restore","Restaurer un rapport archivé : id, titre_avant.","false"},
+        {"lesfaits_archives","Lister les rapports archivés et leurs identifiants.","true"},
         {"lesfaits_list","Consulter les signalements de LES FAITS","true"},
         {"lesfaits_detail","Lire un dossier et ses observations","true"},
         {"lesfaits_stats","Statistiques des problèmes récurrents","true"},
@@ -78,7 +82,7 @@ final class McpWorkerClient {
                 SecurePrefs prefs=new SecurePrefs(context);
                 prefs.protectedValue("worker_secret",secret);
                 prefs.value("worker_id",id);
-                prefs.value("worker_tools_version","2");
+                prefs.value("worker_tools_version","3");
                 prefs.value("worker_content_enabled","false");
                 prefs.value("worker_enabled","true");
                 prefs.value("worker_write_enabled","true");
@@ -139,6 +143,16 @@ final class McpWorkerClient {
                 SecurePrefs prefs=new SecurePrefs(context);
                 if(!isEnabled(prefs))throw new Exception("Application non associée ou partage désactivé.");
                 String id=prefs.value("worker_id"),secret=prefs.protectedValue("worker_secret");
+                // Synchronise le catalogue sans recréer l'association ni perdre le consentement existant.
+                if(!"3".equals(prefs.value("worker_tools_version"))){
+                    JSONObject catalog=new JSONObject();JSONArray capabilities=new JSONArray();
+                    for(String[] item:ACTIONS){
+                        capabilities.put(new JSONObject().put("name",item[0]).put("description",item[1]).put("readOnly",Boolean.parseBoolean(item[2])));
+                    }
+                    catalog.put("capabilities",capabilities);
+                    call("PUT","/api/agent/"+id+"/capabilities",secret,catalog);
+                    prefs.value("worker_tools_version","3");
+                }
                 int processed=0;
                 for(int n=0;n<8;n++){
                     JSONObject res=call("GET","/api/agent/"+id+"/poll",secret,null);
@@ -170,7 +184,7 @@ final class McpWorkerClient {
             if ("lesfaits_lire_piece".equals(action) || "lesfaits_modifier".equals(action)
                     || "lesfaits_vision".equals(action) || "lesfaits_clavier".equals(action) || "lesfaits_souris".equals(action)) {
                 try {
-                    if(!"2".equals(settings.value("worker_tools_version"))) throw new IllegalStateException("Actualise les outils dans Réglages.");
+                    if(!"3".equals(settings.value("worker_tools_version")) && !"2".equals(settings.value("worker_tools_version"))) throw new IllegalStateException("Actualise les outils dans Réglages.");
                     if("lesfaits_lire_piece".equals(action)){
                         if(!"true".equals(settings.value("worker_content_enabled"))) throw new IllegalStateException("Lecture du contenu désactivée dans Réglages.");
                         Store.Evidence file=args==null?null:store.file(args.optLong("fichier_id",-1));
@@ -202,6 +216,27 @@ final class McpWorkerClient {
                 } catch(Exception e){
                     return response.put("ok",false).put("error",e.getMessage()==null?"Opération indisponible":e.getMessage());
                 }
+            }
+            if("lesfaits_merge".equals(action)||"lesfaits_archive".equals(action)||"lesfaits_restore".equals(action)){
+                try{
+                    if(!"true".equals(settings.value("worker_write_enabled")))throw new IllegalStateException("Écriture désactivée");
+                    if(args==null)throw new IllegalArgumentException("Arguments absents");
+                    if("lesfaits_merge".equals(action)){
+                        long target=args.getLong("cible_id"),source=args.getLong("source_id");
+                        store.mergeMcp(target,source,args.getString("avant_cible"),args.getString("avant_source"),args.getString("titre").trim(),taskId);
+                        return response.put("id",target).put("source_archivee",source);
+                    }
+                    long id=args.getLong("id");
+                    String reason=args.optString("motif","").trim();
+                    if(reason.length()>500)throw new IllegalArgumentException("Motif trop long");
+                    store.archiveMcp(id,args.getString("titre_avant"),reason,"lesfaits_restore".equals(action),taskId);
+                    return response.put("id",id);
+                }catch(Exception e){return response.put("ok",false).put("error",e.getMessage()==null?"Opération indisponible":e.getMessage());}
+            }
+            if("lesfaits_archives".equals(action)){
+                List<Store.Incident> archived=store.archived();
+                for(Store.Incident i:archived){if(data.length()>=70)break;data.put(summary(i));}
+                return response.put("total",archived.size()).put("faits",data);
             }
             if("lesfaits_list".equals(action)){
                 String space=args==null?"TOUT":args.optString("espace","TOUT");

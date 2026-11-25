@@ -338,19 +338,19 @@ public class MainActivity extends Activity {
     private void history(){history("TOUT");}
     private void history(String initial){
         base("Historique des signalements","list");
-        String[] filters={"Tous les faits","TRACE · Personnel / Terrain","RAPPORT · Affaires personnelles","Problèmes récurrents","Non résolus"};
+        String[] filters={"Tous les faits","TRACE · Personnel / Terrain","RAPPORT · Affaires personnelles","Problèmes récurrents","Non résolus","Archives / corbeille"};
         Spinner spinner=spinner(body,"Afficher",filters);
         if("TERRAIN".equals(initial))spinner.setSelection(1);
         if("PERSONNEL".equals(initial))spinner.setSelection(2);
         if("OUVERT".equals(initial))spinner.setSelection(4);
+        if("ARCHIVES".equals(initial))spinner.setSelection(5);
         EditText query=edit(body,"Rechercher","Titre, description, lieu, catégorie",false);
-        List<Store.Incident> incidents=store.all();
         LinearLayout items=vertical();body.addView(items);
         Runnable refresh=()->{
             items.removeAllViews();
             String q=searchKey(query.getText().toString());
             int choice=spinner.getSelectedItemPosition(),count=0;
-            for(Store.Incident i:incidents){
+            for(Store.Incident i:choice==5?store.archived():store.all()){
                 if(choice==1&&!"TERRAIN".equals(i.space))continue;
                 if(choice==2&&!"PERSONNEL".equals(i.space))continue;
                 if(choice==3&&!i.recurring)continue;
@@ -728,7 +728,7 @@ public class MainActivity extends Activity {
             state.putString("location",location.getText().toString());state.putLong("date",formTime);
             state.putStringArrayList("photos",new ArrayList<>(newPhotos));return state;
         };
-        if(McpWorkerClient.isEnabled(prefs) && "2".equals(prefs.value("worker_tools_version"))){
+        if(McpWorkerClient.isEnabled(prefs) && ("2".equals(prefs.value("worker_tools_version")) || "3".equals(prefs.value("worker_tools_version")))){
             ReportControls controls=new ReportControls(root,existing==null?0:existing.id,title,description,location);
             assistantSwitch=new CheckBox(this);
             assistantSwitch.setText("Assistance MCP sur ce formulaire · capture, clic et saisie");
@@ -842,11 +842,15 @@ public class MainActivity extends Activity {
             }
         }
         addButton(body,"Exporter ce dossier en PDF",GREEN,()->exportPdf(Collections.singletonList(item)));
-        addButton(body,"Supprimer ce dossier",0xFFB13E42,()->new AlertDialog.Builder(this)
-            .setTitle("Supprimer définitivement ?")
-            .setMessage("Ce dossier, ses anciennes photos et ses observations seront effacés. Les fichiers de la bibliothèque seront conservés pour les autres rapports.")
-            .setNegativeButton("Annuler",null)
-            .setPositiveButton("Supprimer",(d,w)->{store.delete(id);history();}).show());
+        boolean archived=false;
+        for(Store.Incident a:store.archived())if(a.id==id){archived=true;break;}
+        final boolean inArchive=archived;
+        addButton(body,inArchive?"Restaurer ce dossier":"Archiver ce dossier (réversible)",inArchive?GREEN:0xFFB13E42,()->{
+            try{
+                store.archiveMcp(id,item.title,"Action dans l'application",inArchive,java.util.UUID.randomUUID().toString());
+                history(inArchive?"TOUT":"ARCHIVES");
+            }catch(Exception e){toast("Impossible : "+e.getMessage());}
+        });
     }
     private void reports(){
         base("Rapports / Affaires personnelles","report");
@@ -916,7 +920,7 @@ public class MainActivity extends Activity {
             contentAccess.setChecked("true".equals(prefs.value("worker_content_enabled")));
             contentAccess.setOnCheckedChangeListener((v,checked)->prefs.value("worker_content_enabled",String.valueOf(checked)));
             c.addView(contentAccess);
-            if(!"2".equals(prefs.value("worker_tools_version"))){
+            if(!"2".equals(prefs.value("worker_tools_version")) && !"3".equals(prefs.value("worker_tools_version"))){
                 c.addView(text("Pour ajouter la lecture des pièces et l’assistance au formulaire à une ancienne association, utilise une nouvelle invitation du même serveur.",12,MUTED,false));
                 EditText renewal=edit(c,"Nouvelle invitation MCP","Coller le code de réassociation",false);
                 addButton(c,"Actualiser les outils du connecteur",BLUE,()->new AlertDialog.Builder(this)
@@ -928,7 +932,7 @@ public class MainActivity extends Activity {
                             .setMessage(message).setPositiveButton("OK",(dialog,which)->settings()).show()))
                     .show());
             }
-            c.addView(text("Avec le serveur CHK Universal 1.0.7 ou supérieur, tu peux autoriser durablement la création de rapports et la liaison des pièces depuis le panneau du serveur. Ce réglage reste révocable.",12,MUTED,false));
+            c.addView(text("Dans le panneau du serveur CHK Universal, autorise durablement les opérations de rapports disponibles. Les nouvelles capacités se synchronisent sans réassociation lors du prochain contrôle MCP. Cette autorisation reste révocable.",12,MUTED,false));
             addButton(c,"Gérer les autorisations permanentes",BLUE,()->{
                 try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(McpWorkerClient.MCP_URL.replaceFirst("/mcp$","/chat"))));}
                 catch(Exception e){toast("Panneau du serveur indisponible.");}
