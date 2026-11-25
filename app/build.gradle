@@ -17,8 +17,8 @@ android {
         applicationId 'fr.sync30.lesfaits'
         minSdk 26
         targetSdk 36
-        versionCode 15
-        versionName '0.8.5'
+        versionCode 16
+        versionName '0.8.6'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

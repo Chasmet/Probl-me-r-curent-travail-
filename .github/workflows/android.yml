@@ -30,13 +30,20 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: APK de test et bundle Play Store
-        run: gradle :app:assembleDebug :app:bundleRelease --stacktrace
+        run: gradle :app:assembleDebug :app:assembleRelease :app:bundleRelease --stacktrace
       - name: APK à installer
         uses: actions/upload-artifact@v4
         with:
           name: les-faits-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+      - name: APK release non signée à signer hors ligne
+        uses: actions/upload-artifact@v4
+        with:
+          name: les-faits-unsigned-release-apk
+          path: app/build/outputs/apk/release/*-unsigned.apk
+          if-no-files-found: error
+          retention-days: 30
       - name: Bundle non signé (signature Play requise)
         uses: actions/upload-artifact@v4
         with:

@@ -1,0 +1,3 @@
+# Publication APK avec clé permanente hors ligne
+
+La clé privée n'est jamais déposée dans le dépôt. La CI Android produit un APK release non signé. Une signature APK v2 est calculée hors ligne avec la clé permanente existante ; seuls le bloc public de signature, les SHA-256 et l'identifiant du build sont transmis dans .github/ota/signed.json. Le workflow reconstruit l'APK exact, vérifie le certificat attendu, le package, la version, la continuité et publie une release stable compatible SkillMajAuto. La méthode GitHub Secrets reste disponible pour l'automatisation complète ; la signature hors ligne nécessite une opération de signature par version. Android garde sa confirmation d'installation.

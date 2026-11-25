@@ -1,0 +1,79 @@
+name: Publier APK signée hors ligne — LES FAITS
+on:
+  push:
+    branches: [main]
+    paths: ['.github/ota/signed.json']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: les-faits-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Récupérer le build exact à signer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          manifest=.github/ota/signed.json
+          run=$(jq -er '.run_id' "$manifest")
+          source=$(jq -er '.source_sha' "$manifest")
+          [[ "$run" =~ ^[0-9]+$ && "$source" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" | jq -e --arg sha "$source" '.head_sha==$sha and .head_branch=="main" and .conclusion=="success" and .name=="Build Android"' >/dev/null
+          gh run download "$run" -n les-faits-unsigned-release-apk -D unsigned
+      - name: Restaurer la signature publique et vérifier le certificat
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/apply-offline-signature.py .github/ota/signed.json unsigned LES-FAITS-SYNC30.apk
+          signer="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          if [ ! -x "$signer" ]; then
+            sdkmanager "build-tools;36.0.0"
+          fi
+          "$signer" verify --verbose --print-certs LES-FAITS-SYNC30.apk > verify.txt
+          grep -q "Signer #1 certificate SHA-256 digest: 44d5eaf22860c8b45ec947940b2b2cc12a8a68f83a45089f1e6adf59422ddf04" verify.txt
+          test "$(grep -c 'certificate SHA-256 digest:' verify.txt)" -eq 1
+          version=$(jq -er '.version' .github/ota/signed.json)
+          code=$(jq -er '.version_code' .github/ota/signed.json)
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging LES-FAITS-SYNC30.apk > badging.txt
+          grep -F "package: name='fr.sync30.lesfaits' versionCode='$code' versionName='$version'" badging.txt
+          sha256sum LES-FAITS-SYNC30.apk > LES-FAITS-SYNC30.apk.sha256
+      - name: Vérifier la continuité et publier la version stable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(jq -er '.version' .github/ota/signed.json)
+          source=$(jq -er '.source_sha' .github/ota/signed.json)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          if gh api "repos/$GITHUB_REPOSITORY/releases/latest" > latest.json 2> api-error.txt; then
+            previous=$(jq -er '.tag_name' latest.json)
+            gh release download "$previous" -p LES-FAITS-SYNC30.apk -D prior
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs prior/LES-FAITS-SYNC30.apk > prior.txt
+            grep -q "Signer #1 certificate SHA-256 digest: 44d5eaf22860c8b45ec947940b2b2cc12a8a68f83a45089f1e6adf59422ddf04" prior.txt
+            test "$(grep -c 'certificate SHA-256 digest:' prior.txt)" -eq 1
+            if [ "$previous" = "v$version" ]; then
+              cmp prior/LES-FAITS-SYNC30.apk LES-FAITS-SYNC30.apk
+              exit 0
+            fi
+            python3 -c 'import sys; assert tuple(map(int,sys.argv[1].lstrip("v").split("."))) < tuple(map(int,sys.argv[2].split(".")))' "$previous" "$version"
+          elif ! grep -q "HTTP 404" api-error.txt; then
+            cat api-error.txt; exit 1
+          fi
+          gh release create "v$version" LES-FAITS-SYNC30.apk LES-FAITS-SYNC30.apk.sha256 --target "$source" --latest --title "LES FAITS — SYNC 30 v$version" --notes "APK officielle signée avec la clé permanente. Mise à jour intégrée SkillMajAuto. Gestion des autorisations permanentes depuis CHK Universal 1.0.7."
+      - name: Vérifier la version visible dans SkillMajAuto
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(jq -er '.version' .github/ota/signed.json)
+          digest="sha256:$(cut -d' ' -f1 LES-FAITS-SYNC30.apk.sha256)"
+          for i in 1 2 3 4 5; do
+            if gh api "repos/$GITHUB_REPOSITORY/releases/latest" | jq -e --arg tag "v$version" --arg digest "$digest" '.tag_name==$tag and (.draft|not) and (.prerelease|not) and any(.assets[]; .name=="LES-FAITS-SYNC30.apk" and .digest==$digest)' >/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 1

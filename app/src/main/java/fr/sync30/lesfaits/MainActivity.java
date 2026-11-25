@@ -792,6 +792,11 @@ public class MainActivity extends Activity {
                             .setMessage(message).setPositiveButton("OK",(dialog,which)->settings()).show()))
                     .show());
             }
+            c.addView(text("Avec le serveur CHK Universal 1.0.7 ou supérieur, tu peux autoriser durablement la création de rapports et la liaison des pièces depuis le panneau du serveur. Ce réglage reste révocable.",12,MUTED,false));
+            addButton(c,"Gérer les autorisations permanentes",BLUE,()->{
+                try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(McpWorkerClient.MCP_URL.replaceFirst("/mcp$","/chat"))));}
+                catch(Exception e){toast("Panneau du serveur indisponible.");}
+            });
             addButton(c,"Vérifier ma connexion MCP",BLUE,()->
                 McpWorkerClient.check(getApplicationContext(),(ok,message)->
                     new AlertDialog.Builder(this).setTitle(ok?"MCP disponible":"MCP indisponible")
