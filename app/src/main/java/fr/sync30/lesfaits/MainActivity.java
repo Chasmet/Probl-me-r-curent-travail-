@@ -912,7 +912,7 @@ public class MainActivity extends Activity {
             });
             c.addView(share);
             CheckBox contentAccess=new CheckBox(this);
-            contentAccess.setText("Autoriser le MCP à lire le contenu des pièces importées (texte et aperçus)");
+            contentAccess.setText("Autoriser le MCP à lire le contenu des pièces importées (texte, aperçus et fichiers originaux)");
             contentAccess.setChecked("true".equals(prefs.value("worker_content_enabled")));
             contentAccess.setOnCheckedChangeListener((v,checked)->prefs.value("worker_content_enabled",String.valueOf(checked)));
             c.addView(contentAccess);
@@ -945,7 +945,7 @@ public class MainActivity extends Activity {
         }
         LinearLayout info=card(body);
         info.addView(text("Consultation et création depuis ChatGPT",17,BLUE,true));gap(info,7);
-        info.addView(text("Le connecteur peut consulter les dossiers et lier leurs pièces. Active la lecture du contenu pour partager sur demande un extrait ou une page. Dans un formulaire, l’assistance permet de voir l’écran et de remplir le titre, le lieu ou le constat. Tu peux relire puis enregistrer les modifications.",13,INK,false));
+        info.addView(text("Le connecteur peut consulter les dossiers et lier leurs pièces. Active la lecture du contenu pour partager sur demande un extrait, une page ou le fichier original. Dans un formulaire, l’assistance permet de voir l’écran et de remplir le titre, le lieu ou le constat. Tu peux relire puis enregistrer les modifications.",13,INK,false));
         LinearLayout updateCard=card(body);
         updateCard.addView(text("Mise à jour automatique",18,BLUE,true));
         gap(updateCard,6);

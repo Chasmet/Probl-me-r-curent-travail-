@@ -105,6 +105,20 @@ final class EvidenceReader {
         return out;
     }
 
+    static JSONObject original(Context context, Store.Evidence item, long offset) throws Exception {
+        File file=FileVault.safeFile(context,item.path);
+        try(RandomAccessFile in=new RandomAccessFile(file,"r")){
+            long length=in.length();
+            if(offset<0 || offset>length) throw new IOException("Position hors du fichier");
+            int count=(int)Math.min(32*1024,length-offset);
+            in.seek(offset);byte[] bytes=new byte[count];in.readFully(bytes);
+            return new JSONObject().put("ok",true).put("fichier_id",item.id).put("nom",item.name)
+                    .put("mime",item.mime).put("taille_octets",length).put("offset",offset)
+                    .put("octets_base64",Base64.encodeToString(bytes,Base64.NO_WRAP))
+                    .put("offset_suivant",offset+count).put("fin",offset+count==length);
+        }
+    }
+
     private static void requireFirst(int page) throws IOException {
         if (page != 1) throw new IOException("Ce format propose un seul aperçu");
     }

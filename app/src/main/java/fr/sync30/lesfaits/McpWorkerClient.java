@@ -43,7 +43,7 @@ final class McpWorkerClient {
     }
     static String appId(SecurePrefs p){return p.value("worker_id");}
     private static final String[][] ACTIONS={
-        {"lesfaits_lire_piece","Lire une pièce autorisée : fichier_id, page (dès 1). Renvoie texte, métadonnées et/ou image_jpeg_base64.","true"},
+        {"lesfaits_lire_piece","Lire une pièce autorisée : fichier_id, page (dès 1). Texte/image en aperçu ; mode=original et offset pour les octets base64 par 32 Kio.","true"},
         {"lesfaits_modifier","Modifier titre, description ou lieu : id, champ, avant (valeur complète actuelle), texte (nouvelle valeur).","false"},
         {"lesfaits_vision","Capturer le formulaire dont l’assistance est active ; renvoie image_jpeg_base64, session et champs.","true"},
         {"lesfaits_souris","Souris du formulaire : session avec champ, coordonnées x/y dans la capture, ou defiler (haut/bas).","false"},
@@ -175,6 +175,9 @@ final class McpWorkerClient {
                         if(!"true".equals(settings.value("worker_content_enabled"))) throw new IllegalStateException("Lecture du contenu désactivée dans Réglages.");
                         Store.Evidence file=args==null?null:store.file(args.optLong("fichier_id",-1));
                         if(file==null) throw new IllegalArgumentException("Fichier introuvable");
+                        String mode=args.optString("mode","apercu");
+                        if("original".equals(mode)) return EvidenceReader.original(context,file,args.optLong("offset",0));
+                        if(!"apercu".equals(mode)) throw new IllegalArgumentException("Mode attendu : apercu ou original");
                         return EvidenceReader.read(context,file,args.optInt("page",1));
                     }
                     if(!"lesfaits_vision".equals(action) && !"true".equals(settings.value("worker_write_enabled")))

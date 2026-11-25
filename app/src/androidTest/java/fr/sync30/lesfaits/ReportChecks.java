@@ -97,6 +97,11 @@ public final class ReportChecks extends Instrumentation {
             require(store.linkEvidence(id,fileId),"Association");
             try{
                 require(EvidenceReader.read(context,store.file(fileId),1).getString("texte").equals("Observation de terrain"),"Texte DOCX");
+                org.json.JSONObject chunk=EvidenceReader.original(context,store.file(fileId),1);
+                byte[] originalBytes=java.nio.file.Files.readAllBytes(doc.toPath());
+                require(chunk.getBoolean("fin") && java.util.Arrays.equals(
+                        android.util.Base64.decode(chunk.getString("octets_base64"),android.util.Base64.DEFAULT),
+                        java.util.Arrays.copyOfRange(originalBytes,1,originalBytes.length)),"Lecture de l’original depuis un offset");
                 Store.Incident original=store.get(id), changed=store.get(id);
                 changed.title="Titre corrigé";
                 require(store.saveReport(changed,original,Collections.emptyList())==id,"Identité du dossier");
