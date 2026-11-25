@@ -2,7 +2,7 @@ name: Publier APK signée hors ligne — LES FAITS
 on:
   push:
     branches: [main]
-    paths: ['.github/ota/signed.json']
+    paths: ['.github/ota/signed.json', '.github/scripts/verify-ota.sh']
   workflow_dispatch:
 permissions:
   contents: write
