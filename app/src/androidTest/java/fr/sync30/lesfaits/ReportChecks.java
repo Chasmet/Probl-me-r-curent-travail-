@@ -16,6 +16,7 @@ public final class ReportChecks extends Instrumentation {
         Bundle result=new Bundle();
         try {
             checkReports(getTargetContext());
+            checkArchiveMerge(getTargetContext());
             checkControls();
             result.putString("checks","reports-documents-ok");
             finish(Activity.RESULT_OK,result);
@@ -77,6 +78,35 @@ public final class ReportChecks extends Instrumentation {
         if(view instanceof android.view.ViewGroup){
             android.view.ViewGroup group=(android.view.ViewGroup)view;
             for(int i=0;i<group.getChildCount();i++)findTextFields(group.getChildAt(i),out,count);
+        }
+    }
+
+    private static void checkArchiveMerge(Context context)throws Exception {
+        try(Store store=new Store(context)){
+            Store.Incident a=new Store.Incident(),b=new Store.Incident();
+            a.title="Test cible";a.description="Premier fait";a.occurred=1000000000000L;
+            b.title="Test source";b.description="Second fait";b.occurred=1000000001000L;
+            long target=store.insert(a),source=store.insert(b);
+            store.addNote(source,"Observation source");
+            File proof=File.createTempFile("fusion",".bin",FileVault.directory(context));
+            long file=store.addEvidence("preuve.bin","application/octet-stream",proof.getCanonicalPath(),0);
+            store.linkEvidence(source,file);
+            String task=java.util.UUID.randomUUID().toString();
+            try{
+                try{store.mergeMcp(target,source,"incorrect",b.description,"Fusion",task);throw new AssertionError("Fusion sans contrôle");}
+                catch(IllegalStateException expected){}
+                store.mergeMcp(target,source,a.description,b.description,"Fusion",task);
+                store.mergeMcp(target,source,a.description,b.description,"Fusion",task);
+                require(store.get(target).description.contains("Premier fait")&&store.get(target).description.contains("Second fait"),"Deux textes conservés");
+                require(store.all().stream().noneMatch(i->i.id==source),"Source exclue des actifs");
+                require(store.archived().stream().anyMatch(i->i.id==source),"Source archivée");
+                require(store.notes(target).size()==1&&store.filesForIncident(target).size()==1,"Notes et pièces copiées sans doublon");
+                require(store.notes(source).size()==1&&store.filesForIncident(source).size()==1,"Source intacte");
+                store.archiveMcp(source,b.title,"Test restauration",true,java.util.UUID.randomUUID().toString());
+                require(store.all().stream().anyMatch(i->i.id==source),"Source restaurée");
+                store.archiveMcp(source,b.title,"Test corbeille",false,java.util.UUID.randomUUID().toString());
+                require(store.archived().stream().anyMatch(i->i.id==source),"Corbeille réversible");
+            }finally{store.delete(target);store.delete(source);store.deleteEvidence(file);}
         }
     }
 
