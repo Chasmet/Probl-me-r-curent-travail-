@@ -20,7 +20,7 @@ Les anciennes associations annoncent les capacités présentes au moment de leur
 | lesfaits_modifier | id, champ, avant, texte | Corrige le titre, la description ou le lieu si la valeur précédente correspond. Une tâche rejouée conserve le même résultat. |
 | lesfaits_lire_piece | fichier_id, page facultative à partir de 1 | Métadonnées et extrait, ou aperçu JPEG en base64. L’option de partage du contenu doit être active. |
 | lesfaits_vision | Aucun | Vue du formulaire, session et noms des champs. L’assistance doit être cochée sur le formulaire affiché. |
-| lesfaits_souris | session, champ | Place le focus sur titre, description ou lieu et fait défiler le formulaire. |
+| lesfaits_souris | session avec champ, coordonnées x/y ou defiler (haut/bas) | Clique dans un champ visible, positionne le curseur ou fait défiler le formulaire. Les coordonnées correspondent à la capture. |
 | lesfaits_clavier | session, champ, texte | Remplace le contenu du champ. La personne qui utilise le formulaire peut le relire et l’enregistrer. |
 
 ## Portée des vérifications

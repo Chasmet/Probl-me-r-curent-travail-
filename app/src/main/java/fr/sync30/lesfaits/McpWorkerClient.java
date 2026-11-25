@@ -46,7 +46,7 @@ final class McpWorkerClient {
         {"lesfaits_lire_piece","Lire une pièce autorisée : fichier_id, page (dès 1). Renvoie texte, métadonnées et/ou image_jpeg_base64.","true"},
         {"lesfaits_modifier","Modifier titre, description ou lieu : id, champ, avant (valeur complète actuelle), texte (nouvelle valeur).","false"},
         {"lesfaits_vision","Capturer le formulaire dont l’assistance est active ; renvoie image_jpeg_base64, session et champs.","true"},
-        {"lesfaits_souris","Faire défiler et cliquer un champ du formulaire : session, champ (titre, description ou lieu).","false"},
+        {"lesfaits_souris","Souris du formulaire : session avec champ, coordonnées x/y dans la capture, ou defiler (haut/bas).","false"},
         {"lesfaits_clavier","Remplir un champ du formulaire : session, champ et texte complet.","false"},
         {"lesfaits_list","Consulter les signalements de LES FAITS","true"},
         {"lesfaits_detail","Lire un dossier et ses observations","true"},

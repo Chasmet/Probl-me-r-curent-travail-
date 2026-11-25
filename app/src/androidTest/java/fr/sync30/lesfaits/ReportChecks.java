@@ -16,6 +16,7 @@ public final class ReportChecks extends Instrumentation {
         Bundle result=new Bundle();
         try {
             checkReports(getTargetContext());
+            checkControls();
             result.putString("checks","reports-documents-ok");
             finish(Activity.RESULT_OK,result);
         } catch(Throwable failure) {
@@ -26,6 +27,57 @@ public final class ReportChecks extends Instrumentation {
 
     private static void require(boolean value,String message){
         if(!value) throw new AssertionError(message);
+    }
+
+    private static android.view.View find(android.view.View view,String text) {
+        if(view instanceof android.widget.TextView && text.contentEquals(((android.widget.TextView)view).getText())) return view;
+        if(view instanceof android.view.ViewGroup){
+            android.view.ViewGroup group=(android.view.ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++){
+                android.view.View child=find(group.getChildAt(i),text);
+                if(child!=null)return child;
+            }
+        }
+        return null;
+    }
+
+    private void checkControls()throws Exception {
+        android.content.Intent launch=new android.content.Intent(getTargetContext(),MainActivity.class);
+        launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+        Activity activity=startActivitySync(launch);
+        waitForIdleSync();
+        final android.widget.EditText[] fields=new android.widget.EditText[3];
+        runOnMainSync(()->{
+            android.view.View root=activity.findViewById(android.R.id.content);
+            android.view.View start=find(root,"Nouveau signalement");
+            while(start!=null && !start.isClickable())start=(android.view.View)start.getParent();
+            require(start!=null,"Nouveau signalement accessible");start.performClick();
+            findTextFields(root,fields,new int[]{0});
+            require(fields[2]!=null,"Champs de saisie");
+            new ReportControls(root,0,fields[0],fields[1],fields[2]).enable(true);
+        });
+        waitForIdleSync();
+        org.json.JSONObject view=ReportControls.run("lesfaits_vision",null);
+        require(view.getString("image_jpeg_base64").length()>100,"Capture de l’éditeur");
+        org.json.JSONObject args=new org.json.JSONObject().put("session",view.getString("session")).put("champ","titre").put("texte","Essai clavier");
+        require(ReportControls.run("lesfaits_souris",args).getString("champ").equals("titre"),"Clic sur champ");
+        ReportControls.run("lesfaits_clavier",args);
+        runOnMainSync(()->{
+            require(fields[0].getText().toString().equals("Essai clavier"),"Texte saisi");
+            ReportControls.leave();activity.finish();
+        });
+        try{
+            ReportControls.run("lesfaits_vision",null);
+            throw new AssertionError("Capture possible après fermeture");
+        }catch(IllegalArgumentException expected){}
+    }
+
+    private static void findTextFields(android.view.View view,android.widget.EditText[] out,int[] count){
+        if(view instanceof android.widget.EditText && count[0]<out.length) out[count[0]++]=(android.widget.EditText)view;
+        if(view instanceof android.view.ViewGroup){
+            android.view.ViewGroup group=(android.view.ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++)findTextFields(group.getChildAt(i),out,count);
+        }
     }
 
     private static void checkReports(Context context)throws Exception {
